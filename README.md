@@ -1,4 +1,4 @@
-# Doom Run Tracker 1.0.2
+# Doom Run Tracker 1.0.3
 
 Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
