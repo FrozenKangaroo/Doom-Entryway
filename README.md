@@ -1,4 +1,4 @@
-# Doom Run Tracker 1.0.1
+# Doom Run Tracker 1.0.2
 
 Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
@@ -47,6 +47,11 @@ Then open the local address shown by the server, usually `http://localhost:8000`
 The app stores its main data in `doom_tracker_database.json` next to the local server. Titlepics and other media can be stored externally in configured folders to keep the database small.
 
 
-## v1.0.1 settings storage
+## v1.0.2 settings storage
 
 Settings are stored in `settings.json` beside the local server instead of inside `doom_tracker_database.json`. This keeps local paths, WebDAV credentials, and sync settings machine-specific when multiple PCs use the same WebDAV database. Existing embedded settings are migrated automatically on first launch.
+
+
+## v1.0.2 missing/moved file check
+
+Refresh All can now optionally check linked files and folders, repair moved paths by searching configured root folders, remove missing WAD cards, and queue WebDAV cleanup/move actions for the next sync.

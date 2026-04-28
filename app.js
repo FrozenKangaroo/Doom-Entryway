@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.0.3";
 const DATABASE_API = '/api/database';
 
 const state = {
@@ -1186,6 +1186,14 @@ function renderSettings() {
           <span class="field-help warning-text">Warning: this permanently deletes files from disk and cannot be undone.</span>
         </label>
 
+        <label class="checkbox-line">
+          <span>
+            <input type="checkbox" name="checkMissingDeletedFilesOnRefreshAll" ${settings.checkMissingDeletedFilesOnRefreshAll ? 'checked' : ''} />
+            Check for missing and moved files during Refresh All
+          </span>
+          <span class="field-help">When Refresh All runs, Doom Tracker verifies linked WAD/PK3, IWAD, save, screenshot, metadata TXT, and titlepic files/folders. Missing files are searched for under their configured root folders; deleted files are removed from the database and queued for WebDAV cleanup.</span>
+        </label>
+
         <section class="settings-subsection danger-zone-inline">
           <div class="section-bar compact-section-bar">
             <div>
@@ -1822,12 +1830,50 @@ async function autoDetectSaveFolder(wadId) {
 }
 
 async function refreshAllTrackedData() {
-  const wads = Array.isArray(state.app.wads) ? state.app.wads : [];
+  let wads = Array.isArray(state.app.wads) ? state.app.wads : [];
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  const fileCheckResults = [];
+  if (settings.checkMissingDeletedFilesOnRefreshAll) {
+    try {
+      await saveState();
+      const response = await fetch('/api/check-missing-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Missing/deleted file check failed.');
+      if (payload.app) {
+        state.app = normalizeImportedAppState(payload.app);
+        applyAppSettingsToUiState();
+        wads = Array.isArray(state.app.wads) ? state.app.wads : [];
+      }
+      const entries = Array.isArray(payload.results) ? payload.results : [];
+      fileCheckResults.push(...entries.map((entry) => ({
+        title: entry.title || 'File check',
+        kind: entry.kind || 'Missing/deleted files',
+        status: entry.status || 'Checked',
+        detail: entry.detail || '',
+      })));
+    } catch (error) {
+      console.error(error);
+      fileCheckResults.push({ title: 'File check', kind: 'Missing/deleted files', status: 'Error', detail: error.message || 'Missing/deleted file check failed.' });
+    }
+  }
   const excludedTargets = wads.filter((wad) => wad.excludeFromRefreshAll === true);
   const refreshableWads = wads.filter((wad) => wad.excludeFromRefreshAll !== true);
   const saveTargets = refreshableWads.filter((wad) => String(wad.saveFolderPath || '').trim());
   const screenshotTargets = refreshableWads.filter((wad) => String(wad.screenshotFolderPath || '').trim());
   if (!saveTargets.length && !screenshotTargets.length) {
+    if (fileCheckResults.length) {
+      showRefreshAllResults([
+        ...fileCheckResults,
+        ...excludedTargets.map((wad) => ({ title: wad.title, kind: 'Refresh All', status: 'Skipped', detail: 'Excluded from Refresh All in Edit WAD Info.' })),
+      ], { excludedTargets: excludedTargets.length });
+      showAlert('success', 'Refresh All file check complete. No WAD cards have refreshable save or screenshot folders set.');
+      render();
+      return;
+    }
     showAlert('error', excludedTargets.length
       ? 'No non-excluded WAD cards have a Local Save Folder or Screenshot Folder set.'
       : 'No WAD cards have a Local Save Folder or Screenshot Folder set.');
@@ -1842,12 +1888,15 @@ async function refreshAllTrackedData() {
     return;
   }
 
-  const results = excludedTargets.map((wad) => ({
-    title: wad.title,
-    kind: 'Refresh All',
-    status: 'Skipped',
-    detail: 'Excluded from Refresh All in Edit WAD Info.',
-  }));
+  const results = [
+    ...fileCheckResults,
+    ...excludedTargets.map((wad) => ({
+      title: wad.title,
+      kind: 'Refresh All',
+      status: 'Skipped',
+      detail: 'Excluded from Refresh All in Edit WAD Info.',
+    })),
+  ];
   let saveUpdatedMaps = 0;
   let screenshotUpdatedWads = 0;
   let hadChanges = false;
@@ -3247,6 +3296,7 @@ function normalizeImportedSettings(settings) {
     webdavPassword: String(settings?.webdavPassword || ''),
     webdavVerifySsl,
     webdavHashCheckBeforeOverwrite: boolSetting('webdavHashCheckBeforeOverwrite', false),
+    checkMissingDeletedFilesOnRefreshAll: boolSetting('checkMissingDeletedFilesOnRefreshAll', false),
     syncSaves: boolSetting('syncSaves', true),
     syncPwads: boolSetting('syncPwads', true),
     syncIwads: boolSetting('syncIwads', true),
@@ -3256,6 +3306,7 @@ function normalizeImportedSettings(settings) {
     syncDatabase: boolSetting('syncDatabase', true),
     deleteAssociatedFilesOnWadDelete,
     webdavDeletedFiles: Array.isArray(settings?.webdavDeletedFiles) ? settings.webdavDeletedFiles.filter((entry) => entry && typeof entry === 'object' && entry.remote).map((entry) => ({ remote: String(entry.remote), deletedAt: String(entry.deletedAt || '') })) : [],
+    webdavMovedFiles: Array.isArray(settings?.webdavMovedFiles) ? settings.webdavMovedFiles.filter((entry) => entry && typeof entry === 'object' && entry.from && entry.to).map((entry) => ({ from: String(entry.from), to: String(entry.to), movedAt: String(entry.movedAt || '') })) : [],
   };
 }
 
@@ -3634,6 +3685,7 @@ function showWebdavSyncResults(payload) {
   const uploaded = Array.isArray(payload.uploaded) ? payload.uploaded : [];
   const downloaded = Array.isArray(payload.downloaded) ? payload.downloaded : [];
   const deletedRemote = Array.isArray(payload.deletedRemote) ? payload.deletedRemote : [];
+  const movedRemote = Array.isArray(payload.movedRemote) ? payload.movedRemote : [];
   const skipped = Array.isArray(payload.skipped) ? payload.skipped : [];
   const folders = Array.isArray(payload.folders) ? payload.folders : [];
   const errors = Array.isArray(payload.errors) ? payload.errors : [];
@@ -3659,6 +3711,7 @@ function showWebdavSyncResults(payload) {
         <div class="kpi-card"><div class="label">Uploaded</div><div class="value">${Number(summary.uploaded || 0)}</div></div>
         <div class="kpi-card"><div class="label">Downloaded</div><div class="value">${Number(summary.downloaded || 0)}</div></div>
         <div class="kpi-card"><div class="label">Remote deletes</div><div class="value">${Number(summary.deletedRemote || 0)}</div></div>
+        <div class="kpi-card"><div class="label">Remote moves</div><div class="value">${Number(summary.movedRemote || 0)}</div></div>
         <div class="kpi-card"><div class="label">Skipped</div><div class="value">${Number(summary.skipped || 0)}</div></div>
         <div class="kpi-card"><div class="label">Folders created</div><div class="value">${Number(summary.foldersCreated || 0)}</div></div>
         <div class="kpi-card"><div class="label">Temp files removed</div><div class="value">${Number(summary.tempFilesDeleted || 0)}</div></div>
@@ -3669,6 +3722,8 @@ function showWebdavSyncResults(payload) {
         ${list(uploaded, 'Nothing needed uploading.')}
         <h4>Downloaded</h4>
         ${list(downloaded, 'Nothing needed downloading.')}
+        <h4>Moved remotely</h4>
+        ${list(movedRemote, 'No remote moves queued.')}
         <h4>Deleted remotely</h4>
         ${list(deletedRemote, 'No remote deletes queued.')}
         <h4>Skipped</h4>
@@ -3805,6 +3860,7 @@ window.appActions = {
       syncScreenshots: formData.get('syncScreenshots') === 'on',
       syncDatabase: formData.get('syncDatabase') === 'on',
       deleteAssociatedFilesOnWadDelete: formData.get('deleteAssociatedFilesOnWadDelete') === 'on',
+      checkMissingDeletedFilesOnRefreshAll: formData.get('checkMissingDeletedFilesOnRefreshAll') === 'on',
       libraryViewMode: state.libraryViewMode,
       libraryDensity: state.libraryDensity,
     });

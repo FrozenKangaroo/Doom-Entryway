@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.3"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -1186,21 +1186,12 @@ def _infer_iwad_from_maps(entries: list[dict], lumps: dict) -> str:
 
 
 def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -> dict:
-    folder_raw = str(metadata_folder or '').strip()
-    if not folder_raw:
+    try:
+        txt_path, _expected = _companion_txt_path(mod_path, metadata_folder)
+    except Exception:
         return {}
-    folder = Path(os.path.expanduser(folder_raw)).resolve()
-    if not folder.exists() or not folder.is_dir():
+    if not txt_path:
         return {}
-    txt_path = folder / f"{mod_path.stem}.txt"
-    if not txt_path.exists() or not txt_path.is_file():
-        wanted = f"{mod_path.stem}.txt".lower()
-        for candidate in folder.iterdir():
-            if candidate.is_file() and candidate.name.lower() == wanted:
-                txt_path = candidate
-                break
-        else:
-            return {}
     text = txt_path.read_text(encoding='utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
     fields = {}
     current_key = ''
@@ -1647,6 +1638,7 @@ def _serve_image_file(handler: SimpleHTTPRequestHandler, raw_path: str) -> None:
 
 
 def _companion_txt_path(mod_path: Path, metadata_folder: str = '') -> tuple[Path | None, str]:
+    """Find exact companion TXT, including after it was moved into metadata subfolders."""
     folder_raw = str(metadata_folder or '').strip()
     expected = f"{mod_path.stem}.txt" if mod_path.name else ""
     if not folder_raw or not expected:
@@ -1660,15 +1652,19 @@ def _companion_txt_path(mod_path: Path, metadata_folder: str = '') -> tuple[Path
 
     exact = folder / expected
     if exact.exists() and exact.is_file():
-        return exact, expected
+        return exact.resolve(), expected
 
     expected_lower = expected.lower()
     try:
         for child in folder.iterdir():
             if child.is_file() and child.name.lower() == expected_lower:
-                return child, expected
+                return child.resolve(), expected
     except OSError:
         pass
+
+    found = _find_file_recursive(folder, expected, {'.txt'})
+    if found:
+        return found.resolve(), expected
     return None, expected
 
 
@@ -1730,6 +1726,210 @@ def _delete_associated_files(payload: dict) -> dict:
 
     return {"deleted": deleted, "errors": errors}
 
+
+
+def _find_file_recursive(root: Path | None, filename: str, extensions: set[str] | None = None) -> Path | None:
+    if not root or not filename:
+        return None
+    try:
+        root = Path(root).expanduser().resolve()
+        if not root.is_dir():
+            return None
+        target_name = filename.lower()
+        for current, dirnames, filenames in os.walk(root):
+            current_path = Path(current)
+            try:
+                depth = len(current_path.relative_to(root).parts)
+            except Exception:
+                depth = 0
+            if depth >= 8:
+                dirnames[:] = []
+            for item in filenames:
+                if item.lower() != target_name:
+                    continue
+                candidate = (current_path / item).resolve()
+                if extensions and candidate.suffix.lower() not in extensions:
+                    continue
+                return candidate
+    except Exception:
+        return None
+    return None
+
+
+def _folder_exists(raw: str) -> bool:
+    if not raw:
+        return False
+    try:
+        return Path(os.path.expanduser(raw)).resolve().is_dir()
+    except Exception:
+        return False
+
+
+def _find_folder_recursive(root: Path | None, folder_name: str) -> Path | None:
+    if not root or not folder_name:
+        return None
+    try:
+        root = Path(root).expanduser().resolve()
+        if not root.is_dir():
+            return None
+        target = folder_name.lower()
+        for current, dirnames, _filenames in os.walk(root):
+            current_path = Path(current)
+            try:
+                depth = len(current_path.relative_to(root).parts)
+            except Exception:
+                depth = 0
+            if depth >= 8:
+                dirnames[:] = []
+            for dirname in list(dirnames):
+                if dirname.lower() == target:
+                    return (current_path / dirname).resolve()
+    except Exception:
+        return None
+    return None
+
+
+def _queue_wad_remote_deletes(settings: dict, wad: dict) -> None:
+    wad_path = str(wad.get("pwadPath") or wad.get("iwadPath") or "").strip()
+    wad_name = Path(wad_path).name if wad_path else str(wad.get("pwadFileName") or wad.get("iwadFileName") or "").strip()
+    if wad_name:
+        _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["pwads"] if wad.get("pwadPath") else SYNC_ROOT_FOLDERS["iwads"], wad_name))
+        stem = Path(wad_name).stem
+        if stem:
+            _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], f"{stem}.txt"))
+    titlepic = str(wad.get("titlePicFileName") or "").strip()
+    if titlepic:
+        _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["titlepics"], Path(titlepic).name))
+
+
+def _check_missing_and_deleted_files(payload: dict | None = None) -> dict:
+    app = _load_database()
+    settings = app.setdefault("settings", {})
+    results: list[dict] = []
+    wads = [wad for wad in app.get("wads", []) if isinstance(wad, dict)]
+    kept_wads = []
+    changed = False
+
+    pwad_root = _local_folder_for_category(settings, None, "pwads")
+    iwad_root = _local_folder_for_category(settings, None, "iwads")
+    metadata_root = _local_folder_for_category(settings, None, "metadata")
+    titlepic_root = _local_folder_for_category(settings, None, "titlepics")
+    save_root = Path(os.path.expanduser(str(settings.get("defaultRootSaveFolder") or ""))).resolve() if str(settings.get("defaultRootSaveFolder") or "").strip() else None
+    screenshot_root = Path(os.path.expanduser(str(settings.get("defaultScreenshotFolder") or ""))).resolve() if str(settings.get("defaultScreenshotFolder") or "").strip() else None
+
+    def result(wad: dict, kind: str, status: str, detail: str) -> None:
+        results.append({"title": str(wad.get("title") or "Untitled WAD"), "kind": kind, "status": status, "detail": detail})
+
+    for wad in wads:
+        remove_wad = False
+        title = str(wad.get("title") or "Untitled WAD")
+
+        # Main WAD/PK3 or IWAD file. Missing mod containers remove the card because it can no longer be launched/refreshed safely.
+        path_key = "pwadPath" if str(wad.get("pwadPath") or "").strip() else "iwadPath"
+        raw_path = str(wad.get(path_key) or "").strip()
+        if raw_path:
+            try:
+                path = Path(os.path.expanduser(raw_path)).resolve()
+                if not path.is_file():
+                    root = pwad_root if path_key == "pwadPath" else iwad_root
+                    found = _find_file_recursive(root, path.name, {".wad", ".pk3"} if path_key == "pwadPath" else {".wad"})
+                    if found:
+                        old_remote = _remote_path(SYNC_ROOT_FOLDERS["pwads"] if path_key == "pwadPath" else SYNC_ROOT_FOLDERS["iwads"], path.name)
+                        new_remote = _remote_path(SYNC_ROOT_FOLDERS["pwads"] if path_key == "pwadPath" else SYNC_ROOT_FOLDERS["iwads"], found.name)
+                        if old_remote != new_remote:
+                            _append_webdav_move_tombstone(settings, old_remote, new_remote)
+                        wad[path_key] = str(found)
+                        changed = True
+                        result(wad, "File check", "Updated", f"Updated {path.name} location to {found}.")
+                    else:
+                        _queue_wad_remote_deletes(settings, wad)
+                        remove_wad = True
+                        changed = True
+                        result(wad, "File check", "Deleted", f"{path.name} was missing and could not be found under the configured root folder. Removed WAD card and queued WebDAV delete.")
+            except Exception as exc:
+                result(wad, "File check", "Error", str(exc))
+        if remove_wad:
+            continue
+
+        # Companion TXT: update stored preview/metadata path if the TXT was moved under
+        # the metadata root. If it is gone, queue a remote delete.
+        mod_path = str(wad.get("pwadPath") or wad.get("iwadPath") or "").strip()
+        if mod_path and metadata_root:
+            txt_name = f"{Path(mod_path).stem}.txt"
+            previous_txt = str(wad.get("txtMetadataFile") or "").strip()
+            try:
+                found_txt, _expected_txt = _companion_txt_path(Path(os.path.expanduser(mod_path)).resolve(), str(metadata_root))
+            except Exception:
+                found_txt = None
+            if found_txt:
+                found_txt = found_txt.resolve()
+                if previous_txt and Path(os.path.expanduser(previous_txt)).name.lower() == found_txt.name.lower():
+                    old_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], Path(previous_txt).name)
+                    new_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], found_txt.name)
+                    if old_remote != new_remote:
+                        _append_webdav_move_tombstone(settings, old_remote, new_remote)
+                if wad.get("txtMetadataFile") != str(found_txt) or wad.get("txtMetadataFileName") != found_txt.name:
+                    wad["txtMetadataFile"] = str(found_txt)
+                    wad["txtMetadataFileName"] = found_txt.name
+                    changed = True
+                    result(wad, "Metadata TXT", "Updated", f"Updated companion TXT location to {found_txt}.")
+                else:
+                    result(wad, "Metadata TXT", "Found", f"Found companion TXT at {found_txt}.")
+            else:
+                _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], txt_name))
+                if wad.get("txtMetadataFile") or wad.get("txtMetadataFileName"):
+                    wad["txtMetadataFile"] = ""
+                    wad["txtMetadataFileName"] = ""
+                changed = True
+                result(wad, "Metadata TXT", "Missing", f"{txt_name} was not found. Queued WebDAV delete for that companion TXT.")
+
+        # Titlepic PNG: clear the database reference if the PNG is gone and cannot be found.
+        titlepic = str(wad.get("titlePicFileName") or "").strip()
+        if titlepic and titlepic_root:
+            expected = titlepic_root / Path(titlepic).name
+            if not expected.is_file():
+                found = _find_file_recursive(titlepic_root, Path(titlepic).name, {".png"})
+                if found and found.parent == titlepic_root:
+                    result(wad, "Titlepic", "Found", f"Found titlepic PNG at {found}.")
+                elif found:
+                    # The titlepic endpoint expects root-level PNG filenames, so keep the reference but report the mismatch.
+                    result(wad, "Titlepic", "Warning", f"Found {titlepic} in a subfolder, but titlepics must be in the configured Titlepics root folder to display.")
+                else:
+                    _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["titlepics"], Path(titlepic).name))
+                    wad["titlePicFileName"] = ""
+                    wad["titlePicPath"] = ""
+                    changed = True
+                    result(wad, "Titlepic", "Deleted", f"{titlepic} was missing. Cleared titlepic reference and queued WebDAV delete.")
+
+        # Save/screenshot folders: update moved folders by folder name; clear missing folders.
+        for field, root, label in (("saveFolderPath", save_root, "Local Save Folder"), ("screenshotFolderPath", screenshot_root, "Screenshot Folder")):
+            raw_folder = str(wad.get(field) or "").strip()
+            if not raw_folder:
+                continue
+            if _folder_exists(raw_folder):
+                continue
+            folder_name = Path(raw_folder).name
+            found_folder = _find_folder_recursive(root, folder_name)
+            if found_folder:
+                wad[field] = str(found_folder)
+                changed = True
+                result(wad, label, "Updated", f"Updated folder location to {found_folder}.")
+            else:
+                wad[field] = ""
+                changed = True
+                result(wad, label, "Missing", f"{folder_name} was not found under the configured root folder. Cleared this folder path.")
+
+        kept_wads.append(wad)
+
+    if len(kept_wads) != len(wads):
+        app["wads"] = kept_wads
+        changed = True
+    if changed:
+        app["settings"] = settings
+        _save_database(app)
+    if not results:
+        results.append({"title": "File check", "kind": "Missing/deleted files", "status": "Checked", "detail": "No missing or moved linked files were found."})
+    return {"results": results, "changed": changed, "app": _load_database()}
 
 
 def _delete_unassociated_files(payload: dict) -> dict:
@@ -2212,11 +2412,58 @@ def _append_webdav_delete_tombstone(settings: dict, remote_path: str) -> None:
     settings["webdavDeletedFiles"] = tombstones
 
 
+def _append_webdav_move_tombstone(settings: dict, from_remote: str, to_remote: str) -> None:
+    source = str(from_remote or "").strip().strip("/")
+    dest = str(to_remote or "").strip().strip("/")
+    if not source or not dest or source == dest:
+        return
+    moves = settings.get("webdavMovedFiles") if isinstance(settings.get("webdavMovedFiles"), list) else []
+    existing = {(str(entry.get("from") or "").strip().strip("/"), str(entry.get("to") or "").strip().strip("/")) for entry in moves if isinstance(entry, dict)}
+    if (source, dest) not in existing:
+        moves.append({"from": source, "to": dest, "movedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    settings["webdavMovedFiles"] = moves
+
+
+def _webdav_move_tombstones(opener, base_url: str, app: dict) -> tuple[list[dict], list[dict]]:
+    settings = app.setdefault("settings", {})
+    moves = settings.get("webdavMovedFiles") if isinstance(settings.get("webdavMovedFiles"), list) else []
+    remaining = []
+    moved = []
+    errors = []
+    for entry in moves:
+        if not isinstance(entry, dict):
+            continue
+        source = str(entry.get("from") or "").strip().strip("/")
+        dest = str(entry.get("to") or "").strip().strip("/")
+        if not source or not dest or source == dest:
+            continue
+        try:
+            source_url = base_url.rstrip("/") + "/" + "/".join(quote(part) for part in source.split("/") if part)
+            dest_url = base_url.rstrip("/") + "/" + "/".join(quote(part) for part in dest.split("/") if part)
+            dest_folder = "/".join(dest.split("/")[:-1])
+            if dest_folder:
+                _webdav_ensure_folder_path(opener, base_url, dest_folder)
+            if _webdav_exists(opener, source_url):
+                did_move = _webdav_move(opener, source_url, dest_url, overwrite=True)
+                moved.append({"action": "remote-moved", "from": source, "to": dest, "moved": bool(did_move)})
+            else:
+                moved.append({"action": "remote-move-skipped", "from": source, "to": dest, "reason": "source missing"})
+        except Exception as exc:
+            errors.append({"from": source, "to": dest, "error": str(exc)})
+            remaining.append(entry)
+    settings["webdavMovedFiles"] = remaining
+    if len(remaining) != len(moves):
+        _save_database(app)
+    return moved, errors
+
+
 def _merge_settings_preserving_tombstones(current: dict, incoming: dict | None) -> dict:
     if not isinstance(incoming, dict):
         return current
     current_tombstones = current.get("webdavDeletedFiles") if isinstance(current.get("webdavDeletedFiles"), list) else []
     incoming_tombstones = incoming.get("webdavDeletedFiles") if isinstance(incoming.get("webdavDeletedFiles"), list) else []
+    current_moves = current.get("webdavMovedFiles") if isinstance(current.get("webdavMovedFiles"), list) else []
+    incoming_moves = incoming.get("webdavMovedFiles") if isinstance(incoming.get("webdavMovedFiles"), list) else []
     merged = {**current, **incoming}
     combined = []
     seen = set()
@@ -2230,6 +2477,21 @@ def _merge_settings_preserving_tombstones(current: dict, incoming: dict | None) 
             seen.add(remote)
             combined.append({"remote": remote, "deletedAt": str(entry.get("deletedAt") or "")})
     merged["webdavDeletedFiles"] = combined
+
+    move_combined = []
+    move_seen = set()
+    for source in (current_moves, incoming_moves):
+        for entry in source:
+            if not isinstance(entry, dict):
+                continue
+            source_remote = str(entry.get("from") or "").strip().strip("/")
+            dest_remote = str(entry.get("to") or "").strip().strip("/")
+            key = (source_remote, dest_remote)
+            if not source_remote or not dest_remote or source_remote == dest_remote or key in move_seen:
+                continue
+            move_seen.add(key)
+            move_combined.append({"from": source_remote, "to": dest_remote, "movedAt": str(entry.get("movedAt") or "")})
+    merged["webdavMovedFiles"] = move_combined
     return merged
 
 
@@ -2529,11 +2791,12 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
             if child.endswith("/"):
                 temp_deleted += _webdav_cleanup_temps(opener, child)
 
+    moved_remote, move_errors = _webdav_move_tombstones(opener, base_url, app)
     deleted_remote, tombstone_errors = _webdav_delete_tombstones(opener, base_url, app)
     uploaded = []
     downloaded = []
     skipped = []
-    errors = list(tombstone_errors)
+    errors = list(move_errors) + list(tombstone_errors)
     wads = [w for w in app.get("wads", []) if isinstance(w, dict)]
 
     if settings.get("syncSaves", True):
@@ -2668,6 +2931,7 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
         "folders": folder_report,
         "tempFilesDeleted": temp_deleted,
         "deletedRemote": deleted_remote,
+        "movedRemote": moved_remote,
         "uploaded": uploaded,
         "downloaded": downloaded,
         "skipped": skipped,
@@ -2676,6 +2940,7 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
             "uploaded": len(uploaded),
             "downloaded": len(downloaded),
             "deletedRemote": len(deleted_remote),
+            "movedRemote": len(moved_remote),
             "skipped": len(skipped),
             "errors": len(errors),
             "foldersCreated": len([x for x in folder_report if x.get("action") == "created-folder"]),
@@ -2962,6 +3227,15 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
             try:
                 payload = _read_json_body(self)
                 result = _delete_associated_files(payload)
+                _json_response(self, 200, {"ok": True, **result})
+            except Exception as exc:
+                _json_response(self, 400, {"error": str(exc)})
+            return
+
+        if parsed.path == "/api/check-missing-files":
+            try:
+                payload = _read_json_body(self)
+                result = _check_missing_and_deleted_files(payload)
                 _json_response(self, 200, {"ok": True, **result})
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})
