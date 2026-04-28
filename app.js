@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 const DATABASE_API = '/api/database';
 
 const state = {
@@ -1233,7 +1233,7 @@ function renderSettings() {
         </label>
         <label>
           Password / app password
-          <input type="password" name="webdavPassword" autocomplete="current-password" placeholder="Stored locally in doom_tracker_database.json" value="${escapeHtml(settings.webdavPassword)}" />
+          <input type="password" name="webdavPassword" autocomplete="current-password" placeholder="Stored locally in settings.json" value="${escapeHtml(settings.webdavPassword)}" />
           <span class="field-help warning-text">For NAS services, an app password or dedicated WebDAV user is safer than your main account password.</span>
         </label>
         <label class="checkbox-line">
@@ -1367,6 +1367,8 @@ function renderAbout() {
       <h3>Settings and local file management</h3>
       <ul class="list-tight">
         <li>Settings are split into Main Settings and WebDAV Sync tabs.</li>
+        <li>Settings are stored in local <code>settings.json</code> instead of the synced database, so each PC can keep its own paths and WebDAV credentials.</li>
+        <li>Older databases with embedded settings are migrated into <code>settings.json</code> automatically on first launch.</li>
         <li>Configure default root save folder, PWAD/PK3 folder, IWAD folder, metadata TXT folder, Titlepics folder, and Screenshot folder.</li>
         <li>Optionally delete associated WAD/PK3, companion TXT, and titlepic PNG files when deleting a WAD card, with a permanent-delete warning.</li>
         <li>Scan and delete unassociated local files from configured folders.</li>

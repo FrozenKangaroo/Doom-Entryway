@@ -44,6 +44,8 @@ HOST = "127.0.0.1"
 PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
+SETTINGS_PATH = ROOT / "settings.json"
+APP_VERSION = "1.0.1"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -179,22 +181,92 @@ def _empty_database() -> dict:
     return {"wads": [], "folders": []}
 
 
+def _empty_settings() -> dict:
+    return {}
+
+
+def _load_settings() -> dict:
+    if not SETTINGS_PATH.exists():
+        return _empty_settings()
+    try:
+        with SETTINGS_PATH.open("r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+        settings = payload.get("settings") if isinstance(payload, dict) and isinstance(payload.get("settings"), dict) else payload
+        return settings if isinstance(settings, dict) else _empty_settings()
+    except Exception:
+        return _empty_settings()
+
+
+def _save_settings(settings: dict) -> None:
+    if not isinstance(settings, dict):
+        settings = {}
+    from datetime import datetime, timezone
+    payload = {
+        "settings": settings,
+        "savedAt": datetime.now(timezone.utc).isoformat(),
+        "appName": "Doom Run Tracker",
+        "version": APP_VERSION,
+    }
+    tmp_path = SETTINGS_PATH.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    tmp_path.replace(SETTINGS_PATH)
+
+
+def _split_app_settings(app: dict) -> tuple[dict, dict]:
+    if not isinstance(app, dict):
+        return app, {}
+    database_app = dict(app)
+    settings = database_app.pop("settings", {})
+    return database_app, settings if isinstance(settings, dict) else {}
+
+
+def _merge_local_settings(app: dict) -> dict:
+    if not isinstance(app, dict):
+        app = _empty_database()
+    app = dict(app)
+    db_settings = app.pop("settings", None)
+    local_settings = _load_settings()
+
+    # One-time migration: v1.0.0 and older stored settings inside the synced database.
+    # Move them into settings.json so each PC can keep its own paths and WebDAV credentials.
+    if isinstance(db_settings, dict) and db_settings:
+        if SETTINGS_PATH.exists():
+            # Once settings.json exists, the synced database must not back-fill or overwrite
+            # machine-specific settings from another PC.
+            merged = local_settings
+        else:
+            # First-run migration from the old inline settings format.
+            merged = _merge_settings_preserving_tombstones({}, db_settings)
+            _save_settings(merged)
+        local_settings = merged
+        try:
+            _save_database(app)
+        except Exception:
+            pass
+
+    app["settings"] = local_settings
+    return app
+
+
 def _load_database() -> dict:
     if not DATABASE_PATH.exists():
-        return _empty_database()
+        return _merge_local_settings(_empty_database())
 
     with DATABASE_PATH.open("r", encoding="utf-8") as fh:
         payload = json.load(fh)
 
     app = payload.get("app") if isinstance(payload, dict) and isinstance(payload.get("app"), dict) else payload
     if not isinstance(app, dict):
-        return _empty_database()
+        return _merge_local_settings(_empty_database())
 
     if not isinstance(app.get("wads"), list):
         app["wads"] = []
 
+    app = _merge_local_settings(app)
+
     if _migrate_embedded_titlepics(app):
-        # Persist one-time legacy base64 cleanup as soon as the titlepics folder exists.
         _save_database(app)
 
     return app
@@ -207,15 +279,26 @@ def _save_database(app: dict) -> None:
     if not isinstance(app.get("wads"), list):
         raise ValueError("Database payload must include a wads array.")
 
-    _migrate_embedded_titlepics(app)
+    database_app, incoming_settings = _split_app_settings(app)
+    if incoming_settings:
+        current_settings = _load_settings()
+        _save_settings(_merge_settings_preserving_tombstones(current_settings, incoming_settings))
+
+    # Keep settings out of doom_tracker_database.json so WebDAV database sync cannot
+    # overwrite machine-specific local paths, credentials, or sync state.
+    migrate_view = dict(database_app)
+    migrate_view["settings"] = _load_settings()
+    if _migrate_embedded_titlepics(migrate_view):
+        database_app = dict(migrate_view)
+        database_app.pop("settings", None)
 
     from datetime import datetime, timezone
 
     payload = {
-        "app": app,
+        "app": database_app,
         "savedAt": datetime.now(timezone.utc).isoformat(),
         "appName": "Doom Run Tracker",
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
     tmp_path = DATABASE_PATH.with_suffix(".json.tmp")
@@ -224,7 +307,6 @@ def _save_database(app: dict) -> None:
         fh.write("\n")
 
     tmp_path.replace(DATABASE_PATH)
-
 
 
 
@@ -2337,7 +2419,7 @@ def _stable_database_hash(app: dict) -> str:
         if isinstance(value, dict):
             cleaned = {}
             for k, v in value.items():
-                if str(k).startswith("_webdav") or str(k).startswith("_lastWebdav"):
+                if str(k) == "settings" or str(k).startswith("_webdav") or str(k).startswith("_lastWebdav"):
                     continue
                 cleaned[k] = cleanse(v)
             return cleaned
@@ -2644,11 +2726,11 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler name
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
-            _json_response(self, 200, {"ok": True, "root": str(ROOT), "databasePath": str(DATABASE_PATH)})
+            _json_response(self, 200, {"ok": True, "root": str(ROOT), "databasePath": str(DATABASE_PATH), "settingsPath": str(SETTINGS_PATH)})
             return
         if parsed.path == "/api/database":
             try:
-                _json_response(self, 200, {"ok": True, "app": _load_database(), "databasePath": str(DATABASE_PATH)})
+                _json_response(self, 200, {"ok": True, "app": _load_database(), "databasePath": str(DATABASE_PATH), "settingsPath": str(SETTINGS_PATH)})
             except Exception as exc:
                 _json_response(self, 500, {"error": str(exc)})
             return
@@ -2694,7 +2776,7 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
                 payload = _read_json_body(self)
                 app = payload.get("app") if isinstance(payload.get("app"), dict) else payload
                 _save_database(app)
-                _json_response(self, 200, {"ok": True, "databasePath": str(DATABASE_PATH), "app": app})
+                _json_response(self, 200, {"ok": True, "databasePath": str(DATABASE_PATH), "settingsPath": str(SETTINGS_PATH), "app": _load_database()})
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})
             return
