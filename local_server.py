@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -1817,6 +1817,13 @@ def _queue_wad_remote_deletes(settings: dict, wad: dict) -> None:
         _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["pwads"] if is_pwad else SYNC_ROOT_FOLDERS["iwads"], wad_name))
         stem = Path(wad_name).stem
         if stem:
+            metadata_root = _local_folder_for_category(settings, None, "metadata")
+            stored_txt = str(wad.get("txtMetadataFile") or "").strip()
+            if stored_txt:
+                try:
+                    _append_webdav_delete_tombstone(settings, _remote_path_for_local(SYNC_ROOT_FOLDERS["metadata"], Path(os.path.expanduser(stored_txt)), metadata_root))
+                except Exception:
+                    pass
             _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], f"{stem}.txt"))
     titlepic = str(wad.get("titlePicFileName") or "").strip()
     if titlepic:
@@ -1889,10 +1896,14 @@ def _check_missing_and_deleted_files(payload: dict | None = None) -> dict:
             if found_txt:
                 found_txt = found_txt.resolve()
                 if previous_txt and Path(os.path.expanduser(previous_txt)).name.lower() == found_txt.name.lower():
-                    old_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], Path(previous_txt).name)
-                    new_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], found_txt.name)
+                    previous_path = Path(os.path.expanduser(previous_txt)).resolve()
+                    old_remote = _remote_path_for_local(SYNC_ROOT_FOLDERS["metadata"], previous_path, metadata_root)
+                    new_remote = _remote_path_for_local(SYNC_ROOT_FOLDERS["metadata"], found_txt, metadata_root)
                     if old_remote != new_remote:
                         _append_webdav_move_tombstone(settings, old_remote, new_remote)
+                        legacy_flat_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], found_txt.name)
+                        if legacy_flat_remote != old_remote and legacy_flat_remote != new_remote:
+                            _append_webdav_move_tombstone(settings, legacy_flat_remote, new_remote)
                 if wad.get("txtMetadataFile") != str(found_txt) or wad.get("txtMetadataFileName") != found_txt.name:
                     wad["txtMetadataFile"] = str(found_txt)
                     wad["txtMetadataFileName"] = found_txt.name
@@ -1966,8 +1977,18 @@ def _delete_unassociated_files(payload: dict) -> dict:
     settings = app.setdefault("settings", {})
 
     def mark_remote_delete(folder_key: str, file_name: str, local_path: Path) -> None:
-        remote = _remote_path(SYNC_ROOT_FOLDERS[folder_key], Path(file_name).name)
+        root = None
+        if folder_key == "pwads":
+            root = Path(os.path.expanduser(str(payload.get("pwadFolder") or ""))).resolve() if str(payload.get("pwadFolder") or "").strip() else None
+        elif folder_key == "metadata":
+            root = Path(os.path.expanduser(str(payload.get("metadataFolder") or ""))).resolve() if str(payload.get("metadataFolder") or "").strip() else None
+        elif folder_key == "titlepics":
+            root = Path(os.path.expanduser(str(payload.get("titlepicsFolder") or ""))).resolve() if str(payload.get("titlepicsFolder") or "").strip() else None
+        remote = _remote_path_for_local(SYNC_ROOT_FOLDERS[folder_key], local_path, root)
         _append_webdav_delete_tombstone(settings, remote)
+        flat_remote = _remote_path(SYNC_ROOT_FOLDERS[folder_key], Path(file_name).name)
+        if flat_remote != remote:
+            _append_webdav_delete_tombstone(settings, flat_remote)
         tombstoned.append({"remote": remote, "local": str(local_path)})
 
     associated_wads = {_canonical_path(path) for path in payload.get("associatedWadPaths", []) if str(path or '').strip()}
@@ -2017,7 +2038,7 @@ def _delete_unassociated_files(payload: dict) -> dict:
     if metadata_folder:
         try:
             if metadata_folder.exists() and metadata_folder.is_dir():
-                for path in sorted(metadata_folder.glob('*.txt'), key=lambda item: item.name.lower()):
+                for path in sorted(metadata_folder.rglob('*.txt'), key=lambda item: str(item).lower()):
                     if path.name.lower() in associated_txt_names:
                         skipped.append({"path": str(path), "reason": "associated companion TXT"})
                     else:
@@ -2928,9 +2949,52 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
             _webdav_sync_folder_two_way(opener, base_url, SYNC_ROOT_FOLDERS["iwads"], iwad_folder, {".wad"}, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings)
 
     if settings.get("syncMetadataTxt", True):
+        # Sync companion TXT files linked to Library entries only, preserving subfolders
+        # relative to the configured Metadata TXT folder. This matches PWAD/PK3
+        # behaviour and prevents old flat remote files from being downloaded back
+        # into the metadata root after the user has organised TXT files into
+        # subfolders.
         metadata_folder = _local_folder_for_category(settings, None, "metadata")
+        _webdav_ensure_folder_path(opener, base_url, SYNC_ROOT_FOLDERS["metadata"], folder_report)
         if metadata_folder:
-            _webdav_sync_folder_two_way(opener, base_url, SYNC_ROOT_FOLDERS["metadata"], metadata_folder, {".txt"}, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings)
+            seen_metadata: set[Path] = set()
+            for wad in wads:
+                candidates = []
+                stored_txt = str(wad.get("txtMetadataFile") or "").strip()
+                if stored_txt:
+                    candidates.append(Path(os.path.expanduser(stored_txt)).resolve())
+                cand = _candidate_companion_txt(settings, wad)
+                if cand:
+                    candidates.append(Path(cand).resolve())
+                for path in candidates:
+                    try:
+                        path = Path(path).expanduser().resolve()
+                    except Exception:
+                        continue
+                    if path in seen_metadata or path.suffix.lower() != ".txt" or not path.is_file():
+                        continue
+                    seen_metadata.add(path)
+                    rel = _safe_remote_relative_name(_relative_name_under_root(metadata_folder, path)) or path.name
+                    legacy_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], path.name)
+                    new_remote = _remote_path(SYNC_ROOT_FOLDERS["metadata"], rel)
+                    if legacy_remote != new_remote:
+                        try:
+                            legacy_url = base_url.rstrip("/") + "/" + "/".join(quote(part) for part in legacy_remote.split("/") if part)
+                            new_url = base_url.rstrip("/") + "/" + "/".join(quote(part) for part in new_remote.split("/") if part)
+                            dest_folder = "/".join(new_remote.split("/")[:-1])
+                            if dest_folder:
+                                _webdav_ensure_folder_path(opener, base_url, dest_folder, folder_report)
+                            if _webdav_exists(opener, legacy_url) and not _webdav_exists(opener, new_url):
+                                if _webdav_move(opener, legacy_url, new_url, overwrite=True):
+                                    moved_remote.append({"action": "remote-moved", "from": legacy_remote, "to": new_remote, "moved": True, "reason": "metadata subfolder repair"})
+                            elif _webdav_exists(opener, legacy_url) and _webdav_exists(opener, new_url):
+                                if _webdav_delete(opener, legacy_url):
+                                    deleted_remote.append({"action": "remote-deleted", "remote": legacy_remote, "deleted": True, "reason": "duplicate legacy metadata path"})
+                        except Exception as exc:
+                            errors.append({"remote": legacy_remote, "error": f"metadata legacy move failed: {exc}"})
+                    _sync_single_library_file(opener, base_url, SYNC_ROOT_FOLDERS["metadata"], path, metadata_folder, {".txt"}, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings, prefer_local_on_conflict=True)
+        else:
+            skipped.append({"action": "skipped", "remote": SYNC_ROOT_FOLDERS["metadata"], "reason": "metadata folder not set"})
 
     if settings.get("syncTitlepics", True):
         titlepic_folder = _local_folder_for_category(settings, None, "titlepics")
