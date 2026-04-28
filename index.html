@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doom Run Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <div class="brand-mark">D</div>
+          <div>
+            <h1>Doom Run Tracker</h1>
+            <p>1.0.0 Release</p>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button class="nav-button active" data-view="library">Library</button>
+          <button class="nav-button" data-view="stats">Overall Stats</button>
+          <button class="nav-button" data-view="settings">Settings</button>
+          <button class="nav-button" data-view="about">About</button>
+        </nav>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="hint-card">
+          <strong>Import flow</strong>
+          <p>Open a WAD, create or use its run, then import a <code>.zds</code> file. The app reads <code>globals.json</code> from the save archive.</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">Library</h2>
+          <p id="pageSubtitle">Track megawads, single maps, medals, and imported stats.</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="importDbButton" class="secondary-button">Import Database</button>
+          <button id="exportDbButton" class="secondary-button">Export Database</button>
+          <button id="syncButton" class="secondary-button">Sync</button>
+          <button id="scanIwadsButton" class="secondary-button">Scan IWADs</button>
+          <button id="refreshAllButton" class="primary-button">Refresh All</button>
+          <button id="newWadButton" class="primary-button">New WAD</button>
+          <input id="importDbInput" type="file" accept=".json,application/json" hidden />
+        </div>
+      </header>
+
+      <section id="alerts"></section>
+
+      <section id="libraryView" class="view active"></section>
+      <section id="wadDetailView" class="view"></section>
+      <section id="statsView" class="view"></section>
+      <section id="settingsView" class="view"></section>
+      <section id="aboutView" class="view"></section>
+    </main>
+  </div>
+
+  <dialog id="wadDialog" class="modal">
+    <form method="dialog" id="wadForm" class="modal-card">
+      <div class="modal-head">
+        <h3>Create WAD / Map Pack</h3>
+        <button type="button" class="ghost-button close-modal" data-close="wadDialog">✕</button>
+      </div>
+      <div class="metadata-picker">
+        <button type="button" class="secondary-button" id="chooseNewPwadButton">Choose PWAD/PK3 + Auto-Fill Metadata</button>
+        <span id="newWadMetadataStatus" class="field-help">No PWAD/PK3 selected yet. You can save manually, or choose a mod file to auto-fill fields.</span>
+      </div>
+      <div class="form-grid">
+        <label>
+          Title
+          <input name="title" required placeholder="e.g. Ancient Aliens" />
+        </label>
+        <label>
+          Type
+          <select name="type">
+            <option value="megawad">Megawad</option>
+            <option value="episode">Episode / Map Pack</option>
+            <option value="multiple">Multiple Maps</option>
+            <option value="single">Single Map</option>
+          </select>
+        </label>
+        <label>
+          Author
+          <input name="author" placeholder="e.g. Skillsaw" />
+        </label>
+        <label>
+          IWAD
+          <input name="iwad" placeholder="e.g. Doom II" />
+        </label>
+        <label>
+          Source Port
+          <input name="sourcePort" placeholder="e.g. GZDoom" />
+        </label>
+        <label>
+          State
+          <select name="playState">
+            <option value="plan">Plan to Play</option>
+            <option value="current">Currently Playing</option>
+            <option value="hold">On Hold</option>
+            <option value="dropped">Dropped</option>
+            <option value="completed">Completed</option>
+          </select>
+        </label>
+        <label>
+          Total Maps
+          <input name="totalMaps" type="number" min="1" value="32" />
+        </label>
+        <label class="full-width">
+          Notes
+          <textarea name="notes" rows="3" placeholder="Optional notes"></textarea>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary-button close-modal" data-close="wadDialog">Cancel</button>
+        <button type="submit" class="primary-button">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="editWadDialog" class="modal">
+    <form method="dialog" id="editWadForm" class="modal-card">
+      <div class="modal-head">
+        <h3>Edit WAD Info</h3>
+        <button type="button" class="ghost-button close-modal" data-close="editWadDialog">✕</button>
+      </div>
+      <input type="hidden" name="wadId" />
+      <div class="form-grid">
+        <label>
+          WAD Title
+          <input name="title" required placeholder="e.g. Ancient Aliens" />
+        </label>
+        <label>
+          WAD Author
+          <input name="author" placeholder="e.g. Skillsaw" />
+        </label>
+        <label>
+          Source Port
+          <input name="sourcePort" placeholder="e.g. GZDoom / DSDA-Doom / MBF21" />
+        </label>
+        <label>
+          Total Maps
+          <input name="totalMaps" type="number" min="1" value="1" />
+        </label>
+        <label>
+          Type
+          <select name="type">
+            <option value="megawad">Megawad</option>
+            <option value="episode">Episode / Map Pack</option>
+            <option value="multiple">Multiple Maps</option>
+            <option value="single">Single Map</option>
+          </select>
+        </label>
+        <label>
+          IWAD
+          <input name="iwad" placeholder="e.g. Doom II" />
+        </label>
+        <label class="full-width">
+          Notes
+          <textarea name="notes" rows="4" placeholder="Optional WAD notes, compatibility quirks, mod stack, or playthrough notes"></textarea>
+        </label>
+        <label class="full-width checkbox-line">
+          <input name="excludeFromRefreshAll" type="checkbox" />
+          <span>Exclude this WAD from Refresh All</span>
+        </label>
+        <p class="field-help full-width">Useful for WADs you have completed, dropped, archived, or do not want bulk .zds/screenshot refreshes to touch.</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" onclick="window.appActions.refreshWadMetadata()">Refresh Metadata</button>
+        <button type="button" class="secondary-button close-modal" data-close="editWadDialog">Cancel</button>
+        <button type="submit" class="primary-button">Save Changes</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="mapDialog" class="modal">
+    <form method="dialog" id="mapForm" class="modal-card">
+      <div class="modal-head">
+        <h3>Edit Map Stats</h3>
+        <button type="button" class="ghost-button close-modal" data-close="mapDialog">✕</button>
+      </div>
+      <input type="hidden" name="runId" />
+      <input type="hidden" name="mapId" />
+
+      <div class="input-mode-bar">
+        <span>Input mode:</span>
+        <div class="toggle-group" aria-label="Input mode">
+          <button type="button" class="active" data-input-mode="counts">Counts</button>
+          <button type="button" data-input-mode="percent">Percent</button>
+        </div>
+      </div>
+
+      <div class="form-grid compact-grid">
+        <label>
+          Level Name
+          <input name="levelName" required placeholder="MAP01 or E1M1" />
+        </label>
+        <label>
+          Display Name
+          <input name="displayName" placeholder="Optional custom map title" />
+        </label>
+        <label>
+          Map Author
+          <input name="mapAuthor" placeholder="Optional map author" />
+        </label>
+      </div>
+
+      <div id="countsFields" class="form-grid compact-grid" style="margin-top:0.5rem;">
+        <label>
+          Kills Found
+          <input name="killcount" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Total Kills
+          <input name="totalkills" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Items Found
+          <input name="itemcount" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Total Items
+          <input name="totalitems" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Secrets Found
+          <input name="secretcount" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Total Secrets
+          <input name="totalsecrets" type="number" min="0" value="0" />
+        </label>
+      </div>
+
+      <div id="percentFields" class="form-grid compact-grid" style="margin-top:0.5rem; display:none;">
+        <label>
+          Kill % (0–100)
+          <input id="killPctInput" type="number" min="0" max="100" step="0.1" value="0" />
+          <span class="computed-hint" id="killComputed">= 0 / 0</span>
+        </label>
+        <label>
+          Total Kills
+          <input name="totalkills" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Item % (0–100)
+          <input id="itemPctInput" type="number" min="0" max="100" step="0.1" value="0" />
+          <span class="computed-hint" id="itemComputed">= 0 / 0</span>
+        </label>
+        <label>
+          Total Items
+          <input name="totalitems" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Secret % (0–100)
+          <input id="secretPctInput" type="number" min="0" max="100" step="0.1" value="0" />
+          <span class="computed-hint" id="secretComputed">= 0 / 0</span>
+        </label>
+        <label>
+          Total Secrets
+          <input name="totalsecrets" type="number" min="0" value="0" />
+        </label>
+      </div>
+
+      <div class="form-grid compact-grid" style="margin-top:0.5rem;">
+        <label>
+          Level Time (tics)
+          <input name="leveltime" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Deaths
+          <input name="deaths" type="number" min="0" value="0" />
+        </label>
+        <label>
+          Map Difficulty
+          <select name="difficulty">
+            <option value="ITYTD">ITYTD</option>
+            <option value="HNTR">HNTR</option>
+            <option value="HMP">HMP</option>
+            <option value="UV" selected>UV</option>
+            <option value="Nightmare">Nightmare</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        <label>
+          Data Source
+          <select name="sourceType">
+            <option value="manual">Manual</option>
+            <option value="imported">Imported</option>
+            <option value="edited">Imported + Edited</option>
+            <option value="metadata">UMAPINFO</option>
+            <option value="dehacked">DEHACKED</option>
+          </select>
+        </label>
+        <label>
+          Save Filename
+          <input name="saveFileName" placeholder="Optional" />
+        </label>
+        <label class="full-width">
+          Notes
+          <textarea name="notes" rows="3" placeholder="Optional map notes"></textarea>
+        </label>
+      </div>
+      <div class="modal-actions split-actions">
+        <button type="button" id="deleteMapButton" class="danger-button">Delete Map</button>
+        <div class="modal-actions-inner">
+          <button type="button" class="secondary-button close-modal" data-close="mapDialog">Cancel</button>
+          <button type="submit" class="primary-button">Save Changes</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+
+  <dialog id="screenshotDialog" class="modal screenshot-modal">
+    <div class="modal-card screenshot-modal-card">
+      <div class="modal-head">
+        <h3 id="screenshotDialogTitle">Screenshot</h3>
+        <button type="button" class="ghost-button close-modal" data-close="screenshotDialog">✕</button>
+      </div>
+      <div class="screenshot-full-wrap">
+        <img id="screenshotDialogImage" alt="Screenshot" />
+      </div>
+    </div>
+  </dialog>
+
+  <template id="emptyStateTemplate">
+    <div class="empty-state">
+      <div class="empty-icon">☠</div>
+      <h3>No entries yet</h3>
+      <p>Create your first WAD to start tracking runs, medals, and imported ZDoom stats.</p>
+    </div>
+  </template>
+
+  <script src="app.js?v=30"></script>
+</body>
+</html>
