@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const DATABASE_API = '/api/database';
 
 const state = {
@@ -61,7 +61,7 @@ function wireEvents() {
   importDbInput?.addEventListener('change', handleDatabaseImport);
   document.getElementById('chooseNewPwadButton')?.addEventListener('click', choosePwadForNewWad);
 
-  wadForm.addEventListener('submit', (event) => {
+  wadForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(wadForm);
     const metadata = state.pendingNewWadMetadata || null;
@@ -98,7 +98,7 @@ function wireEvents() {
                            runs: [run],
     };
     state.app.wads.unshift(wad);
-    saveState();
+    await saveState();
     wadForm.reset();
     state.pendingNewWadMetadata = null;
     updateNewWadMetadataStatus();
@@ -224,14 +224,15 @@ async function choosePwadForNewWad() {
     return;
   }
 
-  const associatedPaths = state.app.wads.map((entry) => entry.pwadPath).filter(Boolean);
+  const associatedFiles = getAssociatedModFiles();
+  const associatedPaths = associatedFiles.map((entry) => entry.path).filter(Boolean);
 
   try {
     updateNewWadMetadataStatus('Scanning PWAD/PK3 folder...');
     const response = await fetch('/api/scan-pwads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pwadFolder, associatedPaths }),
+      body: JSON.stringify({ pwadFolder, associatedPaths, associatedFiles }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'PWAD scan failed.');
@@ -315,6 +316,19 @@ function updateNewWadMetadataStatus(message = '') {
   const mapText = `${metadata.totalMaps || metadata.maps?.length || 1} map${Number(metadata.totalMaps || metadata.maps?.length || 1) === 1 ? '' : 's'}`;
   const sourceText = metadata.metadataSource ? ` via ${metadata.metadataSource}` : '';
   status.textContent = `Selected ${metadata.relativePath || metadata.fileName}. Detected ${mapText}${sourceText}. Check the fields, then Save.`;
+}
+
+
+function getAssociatedModFiles(excludeWadId = '') {
+  return (state.app?.wads || [])
+    .filter((entry) => !excludeWadId || entry.id !== excludeWadId)
+    .map((entry) => ({
+      path: entry.pwadPath || '',
+      fileName: entry.pwadFileName || (entry.pwadPath ? entry.pwadPath.split(/[\\/]/).pop() : ''),
+      relativePath: entry.pwadRelativePath || '',
+      id: entry.id || '',
+    }))
+    .filter((entry) => entry.path || entry.fileName || entry.relativePath);
 }
 
 function createMetadataPlaceholderMap(entry, sourceType = 'metadata') {
@@ -1581,16 +1595,15 @@ async function associateWadFile(wadId) {
     return;
   }
 
-  const associatedPaths = state.app.wads
-    .map((entry) => entry.pwadPath)
-    .filter((path) => path && (!wad.pwadPath || path !== wad.pwadPath));
+  const associatedFiles = getAssociatedModFiles(wad.id);
+  const associatedPaths = associatedFiles.map((entry) => entry.path).filter(Boolean);
 
   try {
     showAlert('success', `Scanning PWAD folder: ${pwadFolder}`);
     const response = await fetch('/api/scan-pwads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pwadFolder, associatedPaths }),
+      body: JSON.stringify({ pwadFolder, associatedPaths, associatedFiles }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'PWAD scan failed.');
@@ -3347,6 +3360,10 @@ function normalizeImportedWad(wad) {
     pwadPath: String(wad?.pwadPath || '').trim(),
     pwadFileName: String(wad?.pwadFileName || '').trim(),
     pwadRelativePath: String(wad?.pwadRelativePath || '').trim(),
+    fileKind: String(wad?.fileKind || '').trim(),
+    metadataSource: String(wad?.metadataSource || '').trim(),
+    txtMetadataFile: String(wad?.txtMetadataFile || '').trim(),
+    txtMetadataFileName: String(wad?.txtMetadataFileName || '').trim(),
     iwadPath: String(wad?.iwadPath || '').trim(),
     totalMaps: Math.max(1, Number(wad?.totalMaps) || 1),
     notes: String(wad?.notes || '').trim(),

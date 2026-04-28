@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -635,13 +635,27 @@ def _canonical_path(value: str) -> str:
         return str(value or '').strip().lower()
 
 
-def _scan_pwads(folder: Path, associated_paths: list[str] | None = None) -> dict:
+def _scan_pwads(folder: Path, associated_paths: list[str] | None = None, associated_files: list[dict] | None = None) -> dict:
     if not folder.exists():
         raise FileNotFoundError(f"PWAD folder does not exist: {folder}")
     if not folder.is_dir():
         raise NotADirectoryError(f"PWAD path is not a folder: {folder}")
 
     associated = {_canonical_path(path) for path in (associated_paths or []) if str(path or '').strip()}
+    associated_names = set()
+    associated_relatives = set()
+    for item in (associated_files or []):
+        if not isinstance(item, dict):
+            continue
+        p = str(item.get('path') or '').strip()
+        rel = str(item.get('relativePath') or '').replace('\\', '/').strip().strip('/')
+        name = str(item.get('fileName') or '').strip() or (Path(p).name if p else '')
+        if p:
+            associated.add(_canonical_path(p))
+        if rel:
+            associated_relatives.add(rel.lower())
+        if name:
+            associated_names.add(name.lower())
     found, skipped = [], []
     max_depth = 6
 
@@ -656,8 +670,10 @@ def _scan_pwads(folder: Path, associated_paths: list[str] | None = None) -> dict
                 continue
             path = root_path / filename
             canonical = _canonical_path(str(path))
-            if canonical in associated:
-                skipped.append({"fileName": filename, "path": str(path), "reason": "Already associated with a WAD/PK3 card."})
+            relative_key = str(path.relative_to(folder)).replace('\\', '/').lower()
+            filename_key = filename.lower()
+            if canonical in associated or relative_key in associated_relatives or filename_key in associated_names:
+                skipped.append({"fileName": filename, "path": str(path), "relativePath": str(path.relative_to(folder)), "reason": "Already associated with a WAD/PK3 card."})
                 continue
             try:
                 stat = path.stat()
@@ -1791,9 +1807,14 @@ def _find_folder_recursive(root: Path | None, folder_name: str) -> Path | None:
 
 def _queue_wad_remote_deletes(settings: dict, wad: dict) -> None:
     wad_path = str(wad.get("pwadPath") or wad.get("iwadPath") or "").strip()
+    is_pwad = bool(str(wad.get("pwadPath") or "").strip())
     wad_name = Path(wad_path).name if wad_path else str(wad.get("pwadFileName") or wad.get("iwadFileName") or "").strip()
     if wad_name:
-        _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["pwads"] if wad.get("pwadPath") else SYNC_ROOT_FOLDERS["iwads"], wad_name))
+        root = _local_folder_for_category(settings, None, "pwads" if is_pwad else "iwads")
+        remote = _remote_path_for_local(SYNC_ROOT_FOLDERS["pwads"] if is_pwad else SYNC_ROOT_FOLDERS["iwads"], Path(os.path.expanduser(wad_path)) if wad_path else Path(wad_name), root)
+        _append_webdav_delete_tombstone(settings, remote)
+        # Also queue the legacy flat remote path so older sync layouts do not resurrect the file.
+        _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["pwads"] if is_pwad else SYNC_ROOT_FOLDERS["iwads"], wad_name))
         stem = Path(wad_name).stem
         if stem:
             _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], f"{stem}.txt"))
@@ -1834,10 +1855,14 @@ def _check_missing_and_deleted_files(payload: dict | None = None) -> dict:
                     root = pwad_root if path_key == "pwadPath" else iwad_root
                     found = _find_file_recursive(root, path.name, {".wad", ".pk3"} if path_key == "pwadPath" else {".wad"})
                     if found:
-                        old_remote = _remote_path(SYNC_ROOT_FOLDERS["pwads"] if path_key == "pwadPath" else SYNC_ROOT_FOLDERS["iwads"], path.name)
-                        new_remote = _remote_path(SYNC_ROOT_FOLDERS["pwads"] if path_key == "pwadPath" else SYNC_ROOT_FOLDERS["iwads"], found.name)
+                        sync_root = SYNC_ROOT_FOLDERS["pwads"] if path_key == "pwadPath" else SYNC_ROOT_FOLDERS["iwads"]
+                        old_remote = _remote_path_for_local(sync_root, path, root)
+                        new_remote = _remote_path_for_local(sync_root, found, root)
                         if old_remote != new_remote:
                             _append_webdav_move_tombstone(settings, old_remote, new_remote)
+                            legacy_flat_remote = _remote_path(sync_root, path.name)
+                            if legacy_flat_remote != old_remote and legacy_flat_remote != new_remote:
+                                _append_webdav_move_tombstone(settings, legacy_flat_remote, new_remote)
                         wad[path_key] = str(found)
                         changed = True
                         result(wad, "File check", "Updated", f"Updated {path.name} location to {found}.")
@@ -2280,8 +2305,34 @@ def _webdav_manifest(settings: dict) -> dict:
     return manifest
 
 
+def _safe_remote_relative_name(value: str) -> str:
+    raw = str(value or '').replace('\\', '/').strip('/')
+    parts = []
+    for part in raw.split('/'):
+        if not part or part in {'.', '..'}:
+            continue
+        parts.append(part)
+    return '/'.join(parts)
+
+
 def _manifest_key(folder_path: str, name: str) -> str:
-    return f"{str(folder_path).strip('/')}/{Path(name).name}"
+    rel = _safe_remote_relative_name(name) or Path(str(name)).name
+    return f"{str(folder_path).strip('/')}/{rel}"
+
+
+def _relative_name_under_root(root: Path | None, path: Path) -> str:
+    try:
+        if root:
+            root = Path(root).expanduser().resolve()
+            path = Path(path).expanduser().resolve()
+            return path.relative_to(root).as_posix()
+    except Exception:
+        pass
+    return Path(path).name
+
+
+def _remote_path_for_local(folder_path: str, local_path: Path, local_root: Path | None = None) -> str:
+    return _remote_path(folder_path, _relative_name_under_root(local_root, local_path))
 
 
 def _manifest_hash(settings: dict, remote_path: str) -> str:
@@ -2755,6 +2806,47 @@ def _sync_database_to_webdav(opener, base_url: str, app: dict, report: list[dict
     data = DATABASE_PATH.read_bytes()
     return _webdav_upload_bytes_atomic(opener, base_url, folder, "doom_tracker_database.json", data, force=True)
 
+
+def _sync_single_library_file(opener, base_url: str, sync_root: str, local_path: Path, local_root: Path | None, extensions: set[str], force_upload: bool, uploaded: list, downloaded: list, skipped: list, errors: list, folder_report: list, hash_check: bool = False, settings: dict | None = None, prefer_local_on_conflict: bool = True) -> None:
+    settings = settings if isinstance(settings, dict) else {}
+    try:
+        local_path = Path(local_path).expanduser().resolve()
+        if local_path.suffix.lower() not in extensions:
+            skipped.append({"action": "skipped", "local": str(local_path), "remote": sync_root, "reason": "wrong extension"})
+            return
+        rel = _relative_name_under_root(local_root, local_path)
+        rel = _safe_remote_relative_name(rel) or local_path.name
+        parent_rel = "/".join(rel.split("/")[:-1])
+        name = rel.split("/")[-1]
+        remote_folder = f"{sync_root}/{parent_rel}" if parent_rel else sync_root
+        rpath = _remote_path(sync_root, rel)
+        _webdav_ensure_folder_path(opener, base_url, remote_folder, folder_report)
+        remote_url = _webdav_file_url(base_url, remote_folder, name)
+        remote_stat = _webdav_stat(opener, remote_url)
+        if remote_stat and (not local_path.exists()):
+            downloaded.append(_webdav_download_file_atomic(opener, remote_url, local_path, remote_stat))
+            if local_path.exists():
+                _manifest_set(settings, rpath, _file_sha256(local_path), str(local_path))
+            return
+        if remote_stat and prefer_local_on_conflict and not force_upload and local_path.exists():
+            # If both sides look different, prefer the library's local path so moved local files do not get overwritten.
+            if _remote_file_newer_or_different(remote_stat, local_path):
+                if hash_check and _local_remote_hash_match(opener, remote_url, local_path):
+                    skipped.append({"action": "skipped", "local": str(local_path), "remote": rpath, "reason": "hash match"})
+                    _manifest_set(settings, rpath, _file_sha256(local_path), str(local_path))
+                    return
+                skipped.append({"action": "skipped", "local": str(local_path), "remote": rpath, "reason": "local library file protected; uploading local"})
+        result = _webdav_upload_file_atomic(opener, base_url, remote_folder, local_path, name, force=force_upload, hash_check=hash_check)
+        if result.get("action") == "uploaded":
+            uploaded.append(result)
+        else:
+            skipped.append(result)
+        if local_path.exists():
+            _manifest_set(settings, rpath, _file_sha256(local_path), str(local_path))
+    except Exception as exc:
+        errors.append({"local": str(local_path), "remote": sync_root, "error": str(exc)})
+
+
 def _webdav_one_way_sync(payload: dict | None = None) -> dict:
     """Run normal two-way sync. The legacy function name is kept for UI/API compatibility."""
     app = _load_database()
@@ -2816,22 +2908,9 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
             _webdav_sync_folder_two_way(opener, base_url, remote_folder, folder, SCREENSHOT_EXTENSIONS, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings)
 
     if settings.get("syncPwads", True):
-        # Download to the default PWAD folder, but only upload WAD/PK3 files already linked in the Library.
+        # Sync only PWAD/PK3 files linked in the Library. Preserve subfolders relative to the Default PWAD path.
         pwad_folder = _local_folder_for_category(settings, None, "pwads")
-        if pwad_folder:
-            _webdav_ensure_folder_path(opener, base_url, SYNC_ROOT_FOLDERS["pwads"], folder_report)
-            for entry in _webdav_list_files(opener, _webdav_folder_url(base_url, SYNC_ROOT_FOLDERS["pwads"]), {".wad", ".pk3"}):
-                target = pwad_folder / entry["name"]
-                try:
-                    if _remote_file_newer_or_different(entry.get("stat"), target):
-                        if hash_check and target.exists() and _local_remote_hash_match(opener, entry["url"], target):
-                            skipped.append({"action": "skipped", "local": str(target), "remote": f"{SYNC_ROOT_FOLDERS['pwads']}/{entry['name']}", "reason": "hash match"})
-                        else:
-                            downloaded.append(_webdav_download_file_atomic(opener, entry["url"], target, entry.get("stat")))
-                    else:
-                        skipped.append({"action": "skipped", "local": str(target), "remote": f"{SYNC_ROOT_FOLDERS['pwads']}/{entry['name']}", "reason": "local current"})
-                except Exception as exc:
-                    errors.append({"local": str(target), "remote": f"{SYNC_ROOT_FOLDERS['pwads']}/{entry.get('name','')}", "error": str(exc)})
+        _webdav_ensure_folder_path(opener, base_url, SYNC_ROOT_FOLDERS["pwads"], folder_report)
         seen = set()
         for wad in wads:
             raw = str(wad.get("pwadPath") or "").strip()
@@ -2841,11 +2920,7 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
             if path.suffix.lower() not in {".wad", ".pk3"} or path in seen:
                 continue
             seen.add(path)
-            try:
-                result = _webdav_upload_file_atomic(opener, base_url, SYNC_ROOT_FOLDERS["pwads"], path, None, force=force_upload, hash_check=hash_check)
-                (uploaded if result.get("action") == "uploaded" else skipped).append(result)
-            except Exception as exc:
-                errors.append({"local": str(path), "remote": SYNC_ROOT_FOLDERS["pwads"], "error": str(exc)})
+            _sync_single_library_file(opener, base_url, SYNC_ROOT_FOLDERS["pwads"], path, pwad_folder, {".wad", ".pk3"}, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings, prefer_local_on_conflict=True)
 
     if settings.get("syncIwads", True):
         iwad_folder = _local_folder_for_category(settings, None, "iwads")
@@ -3108,8 +3183,9 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
                 if not folder_raw:
                     raise ValueError("pwadFolder is required.")
                 associated_paths = payload.get("associatedPaths") if isinstance(payload.get("associatedPaths"), list) else []
+                associated_files = payload.get("associatedFiles") if isinstance(payload.get("associatedFiles"), list) else []
                 folder = Path(os.path.expanduser(folder_raw)).resolve()
-                result = _scan_pwads(folder, associated_paths)
+                result = _scan_pwads(folder, associated_paths, associated_files)
                 _json_response(self, 200, {"ok": True, "pwadFolder": str(folder), **result})
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})
