@@ -1,4 +1,17 @@
-# Doom Run Tracker 1.2.4
+# Doom Run Tracker 1.3.5
+
+## v1.3.5 Home dashboard
+
+This major version adds a new default Home screen so the app opens on a useful dashboard instead of dropping straight into the library.
+
+Home includes:
+
+- Continue Playing cards, prioritising WADs marked Currently Playing.
+- Collection snapshot with tracked WADs, current/completed/planned counts, maps logged, completion percentage, tracked time, and kills per minute.
+- Medal haul with Gold/Silver/Bronze totals.
+- Total demons slain, items collected, and secrets found.
+- Recently Played and Recently Added panels.
+- Quick buttons to jump into common library filters such as play state, WAD type, and popular tags.
 
 ## v1.2.1 Library quick filters
 - Click a WAD card play state to filter to that state.

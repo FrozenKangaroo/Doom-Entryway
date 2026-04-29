@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.3.5"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"

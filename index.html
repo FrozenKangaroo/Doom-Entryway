@@ -18,12 +18,13 @@
           <div class="brand-mark">D</div>
           <div>
             <h1>Doom Run Tracker</h1>
-            <p>1.2.3 Release</p>
+            <p>1.3.5 Release</p>
           </div>
         </div>
 
         <nav class="sidebar-nav">
-          <button class="nav-button active" data-view="library">Library</button>
+          <button class="nav-button active" data-view="home">Home</button>
+          <button class="nav-button" data-view="library">Library</button>
           <button class="nav-button" data-view="stats">Overall Stats</button>
           <button class="nav-button" data-view="settings">Settings</button>
           <button class="nav-button" data-view="about">About</button>
@@ -41,8 +42,8 @@
     <main class="main-panel">
       <header class="topbar">
         <div>
-          <h2 id="pageTitle">Library</h2>
-          <p id="pageSubtitle">Track megawads, single maps, medals, and imported stats.</p>
+          <h2 id="pageTitle">Home</h2>
+          <p id="pageSubtitle">At-a-glance progress, recent play, and quick launch points.</p>
         </div>
         <div class="topbar-actions">
           <button id="importDbButton" class="secondary-button">Import Database</button>
@@ -57,7 +58,18 @@
 
       <section id="alerts"></section>
 
-      <section id="libraryView" class="view active"></section>
+      <section id="homeView" class="view active">
+        <div class="home-dashboard section-stack">
+          <section class="home-hero">
+            <div>
+              <p class="eyebrow">Doom Run Tracker 1.3.5</p>
+              <h3>Your Doom command center</h3>
+              <p class="muted-text">Loading dashboard…</p>
+            </div>
+          </section>
+        </div>
+      </section>
+      <section id="libraryView" class="view"></section>
       <section id="wadDetailView" class="view"></section>
       <section id="statsView" class="view"></section>
       <section id="settingsView" class="view"></section>
@@ -351,6 +363,6 @@
     </div>
   </template>
 
-  <script src="app.js?v=122"></script>
+  <script src="app.js?v=135"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.3.5";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -21,7 +21,7 @@ const LIBRARY_SORT_OPTIONS = [
 
 const state = {
   app: { wads: [], folders: [], settings: {} },
-  currentView: 'library',
+  currentView: 'home',
   currentWadId: null,
   displayMode: 'both',
   alerts: [],
@@ -41,6 +41,7 @@ const state = {
 
 const pageTitle = document.getElementById('pageTitle');
 const pageSubtitle = document.getElementById('pageSubtitle');
+const homeView = document.getElementById('homeView');
 const libraryView = document.getElementById('libraryView');
 const wadDetailView = document.getElementById('wadDetailView');
 const statsView = document.getElementById('statsView');
@@ -61,6 +62,13 @@ initApp();
 async function initApp() {
   await loadState();
   wireEvents();
+  activateNav(state.currentView === 'home' ? 'home' : state.currentView);
+  if (state.currentView === 'home') {
+    [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view?.classList.remove('active'));
+    homeView?.classList.add('active');
+    pageTitle.textContent = 'Home';
+    pageSubtitle.textContent = 'At-a-glance progress, recent play, and quick launch points.';
+  }
   render();
 }
 
@@ -462,9 +470,13 @@ function updateComputedHints() {
 
 function showView(viewName) {
   state.currentView = viewName;
-  [libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
+  [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
 
-  if (viewName === 'library') {
+  if (viewName === 'home') {
+    homeView.classList.add('active');
+    pageTitle.textContent = 'Home';
+    pageSubtitle.textContent = 'At-a-glance progress, recent play, and quick launch points.';
+  } else if (viewName === 'library') {
     libraryView.classList.add('active');
     pageTitle.textContent = 'Library';
     pageSubtitle.textContent = 'Track megawads, single maps, medals, imports, and map metadata.';
@@ -487,7 +499,7 @@ function showView(viewName) {
 function showWadDetail(wadId) {
   state.currentWadId = wadId;
   state.currentView = 'wad';
-  [libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
+  [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
   wadDetailView.classList.add('active');
   const wad = getCurrentWad();
   if (wad) {
@@ -500,17 +512,218 @@ function showWadDetail(wadId) {
 
 function render() {
   renderAlerts();
-  renderLibrary();
-  renderWadDetail();
-  renderStats();
-  renderSettings();
-  renderAbout();
+  const renderers = [
+    ['home', renderHome],
+    ['library', renderLibrary],
+    ['wad', renderWadDetail],
+    ['stats', renderStats],
+    ['settings', renderSettings],
+    ['about', renderAbout],
+  ];
+  for (const [name, renderer] of renderers) {
+    try {
+      renderer();
+    } catch (error) {
+      console.error(`Render failed for ${name}:`, error);
+      if (name === 'home' && state.currentView === 'home') renderHomeFallback(error);
+      else if (state.currentView === name) showAlert('error', `${capitalize(name)} view failed to render: ${error.message || error}`);
+    }
+  }
+  if (state.currentView === 'home' && homeView && !homeView.innerHTML.trim()) {
+    renderHomeFallback();
+  }
+}
+
+function renderHomeFallback(error = null) {
+  if (!homeView) return;
+  const wads = Array.isArray(state.app?.wads) ? state.app.wads : [];
+  const currentCount = wads.filter((wad) => (wad.playState || '') === 'current').length;
+  const completedCount = wads.filter((wad) => (wad.playState || '') === 'completed').length;
+  homeView.innerHTML = `
+    <div class="home-dashboard section-stack">
+      <section class="home-hero">
+        <div>
+          <p class="eyebrow">Doom Run Tracker ${escapeHtml(APP_VERSION)}</p>
+          <h3>Your Doom command center</h3>
+          <p class="muted-text">Home dashboard fallback loaded. The app is running, and you can jump into the library or stats from here.</p>
+          ${error ? `<p class="alert error" style="margin-top:0.8rem;">Home dashboard error: ${escapeHtml(error.message || error)}</p>` : ''}
+        </div>
+        <div class="home-hero-actions">
+          <button class="primary-button" onclick="window.appActions.goLibrary()">Open Library</button>
+          <button class="secondary-button" onclick="window.appActions.goStats()">Overall Stats</button>
+          <button class="secondary-button" onclick="document.getElementById('refreshAllButton')?.click()">Refresh All</button>
+          <button class="secondary-button" onclick="document.getElementById('newWadButton')?.click()">New WAD</button>
+        </div>
+      </section>
+      <section class="stat-shell">
+        <h3>Collection Snapshot</h3>
+        <div class="kpi-grid" style="margin-top:0.8rem;">
+          <div class="kpi-card"><div class="label">Tracked WADs</div><div class="value">${wads.length}</div></div>
+          <div class="kpi-card"><div class="label">Currently Playing</div><div class="value">${currentCount}</div></div>
+          <div class="kpi-card"><div class="label">Completed</div><div class="value">${completedCount}</div></div>
+        </div>
+      </section>
+    </div>`;
 }
 
 function renderAlerts() {
   alertsEl.innerHTML = state.alerts
   .map((alert) => `<div class="alert ${alert.type}">${escapeHtml(alert.message)}</div>`)
   .join('');
+}
+
+function renderHome() {
+  if (state.currentView !== 'home') return;
+  ensureFolderState();
+  const wads = Array.isArray(state.app?.wads) ? state.app.wads : [];
+  const allRuns = wads.flatMap((wad) => (wad.runs || []).map((run) => ({ wad, run })));
+  const allMaps = allRuns.flatMap(({ wad, run }) => (run.maps || []).map((map) => ({ wad, run, map })));
+  const playedMaps = allMaps.filter(({ map }) => !isUnplayedPlaceholderMap(map));
+  const totals = computeMapCollectionTotals(playedMaps.map(({ map }) => map));
+  const medalTotals = allMaps.reduce((acc, entry) => {
+    const tier = getMedal(entry.map).tier;
+    acc[tier] += 1;
+    return acc;
+  }, { gold: 0, silver: 0, bronze: 0, none: 0, unplayed: 0 });
+
+  const currentWads = wads.filter((wad) => (wad.playState || 'plan') === 'current');
+  const continueList = (currentWads.length ? currentWads : wads)
+    .slice()
+    .sort((a, b) => (getLastPlayedTimestamp(b) || Date.parse(b.updatedAt || b.createdAt || '') || 0) - (getLastPlayedTimestamp(a) || Date.parse(a.updatedAt || a.createdAt || '') || 0))
+    .slice(0, 4);
+  const recentAdded = wads.slice().sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0)).slice(0, 5);
+  const recentlyPlayed = wads.slice().filter((wad) => getLastPlayedTimestamp(wad) > 0).sort((a, b) => getLastPlayedTimestamp(b) - getLastPlayedTimestamp(a)).slice(0, 5);
+  const completedCount = wads.filter((wad) => (wad.playState || '') === 'completed').length;
+  const currentCount = wads.filter((wad) => (wad.playState || '') === 'current').length;
+  const plannedCount = wads.filter((wad) => (wad.playState || 'plan') === 'plan').length;
+  const totalMapSlots = sum(wads.map((wad) => Number(wad.totalMaps) || 0));
+  const completionPercent = totalMapSlots ? (playedMaps.length / totalMapSlots) * 100 : 0;
+
+  homeView.innerHTML = `
+  <div class="home-dashboard section-stack">
+    <section class="home-hero">
+      <div>
+        <p class="eyebrow">Doom Run Tracker ${escapeHtml(APP_VERSION)}</p>
+        <h3>Your Doom command center</h3>
+        <p class="muted-text">Jump back into current WADs, check collection progress, and spot what changed without digging through the library.</p>
+      </div>
+      <div class="home-hero-actions">
+        <button class="primary-button" onclick="window.appActions.goLibrary()">Open Library</button>
+        <button class="secondary-button" onclick="window.appActions.goStats()">Overall Stats</button>
+        <button class="secondary-button" onclick="document.getElementById('newWadButton')?.click()">New WAD</button>
+      </div>
+    </section>
+
+    <section class="stat-shell">
+      <h3>Collection Snapshot</h3>
+      <div class="kpi-grid" style="margin-top:0.8rem;">
+        <div class="kpi-card"><div class="label">Tracked WADs</div><div class="value">${wads.length}</div></div>
+        <div class="kpi-card"><div class="label">Currently Playing</div><div class="value">${currentCount}</div></div>
+        <div class="kpi-card"><div class="label">Completed</div><div class="value">${completedCount}</div></div>
+        <div class="kpi-card"><div class="label">Plan to Play</div><div class="value">${plannedCount}</div></div>
+        <div class="kpi-card"><div class="label">Maps Logged</div><div class="value">${playedMaps.length} / ${totalMapSlots}</div></div>
+        <div class="kpi-card"><div class="label">Completion</div><div class="value">${formatPercent(completionPercent)}</div></div>
+        <div class="kpi-card"><div class="label">Tracked Time</div><div class="value">${formatTics(totals.totalTimeTics)}</div></div>
+        <div class="kpi-card"><div class="label">Kills / Min</div><div class="value">${formatNumber(totals.averageKillsPerMinute, 2)}</div></div>
+      </div>
+    </section>
+
+    <div class="home-grid">
+      <section class="stat-shell home-panel">
+        <div class="section-title-row"><h3>Continue Playing</h3><button class="ghost-button" onclick="window.appActions.openLibraryPreset('playState','current')">View current</button></div>
+        ${continueList.length ? `<div class="home-card-list">${continueList.map(renderHomeWadMiniCard).join('')}</div>` : renderHomeEmpty('No current WADs yet. Mark something as Currently Playing and it will show here.')}
+      </section>
+
+      <section class="stat-shell home-panel">
+        <h3>Medal Haul</h3>
+        <div class="home-medal-grid">
+          <div class="home-medal gold">🥇<strong>${medalTotals.gold}</strong><span>Gold</span></div>
+          <div class="home-medal silver">🥈<strong>${medalTotals.silver}</strong><span>Silver</span></div>
+          <div class="home-medal bronze">🥉<strong>${medalTotals.bronze}</strong><span>Bronze</span></div>
+        </div>
+        <div class="home-totals-list">
+          <div><span>Total demons slain</span><strong>${formatInteger(totals.totalKills)}</strong></div>
+          <div><span>Total items collected</span><strong>${formatInteger(totals.totalItems)}</strong></div>
+          <div><span>Total secrets found</span><strong>${formatInteger(totals.totalSecrets)}</strong></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="home-grid">
+      <section class="stat-shell home-panel">
+        <h3>Recently Played</h3>
+        ${recentlyPlayed.length ? `<div class="home-list">${recentlyPlayed.map((wad) => renderHomeListRow(wad, formatLastPlayedRelative(getLastPlayedTimestamp(wad)))).join('')}</div>` : renderHomeEmpty('No imported save stats yet.')}
+      </section>
+      <section class="stat-shell home-panel">
+        <h3>Recently Added</h3>
+        ${recentAdded.length ? `<div class="home-list">${recentAdded.map((wad) => renderHomeListRow(wad, `Added ${formatLibraryDate(Date.parse(wad.createdAt || '') || 0)}`)).join('')}</div>` : renderHomeEmpty('Create your first WAD card to begin.')}
+      </section>
+    </div>
+
+    <section class="stat-shell">
+      <h3>Quick Filters</h3>
+      <div class="quick-action-row">
+        <button class="filter-pill" onclick="window.appActions.openLibraryPreset('playState','current')">Currently Playing</button>
+        <button class="filter-pill" onclick="window.appActions.openLibraryPreset('playState','plan')">Plan to Play</button>
+        <button class="filter-pill" onclick="window.appActions.openLibraryPreset('playState','completed')">Completed</button>
+        ${renderHomeTypeButtons(wads)}
+        ${renderHomeTagButtons(wads)}
+      </div>
+    </section>
+  </div>`;
+}
+
+function renderHomeWadMiniCard(wad) {
+  const latestRun = getLatestRun(wad);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  return `<article class="home-wad-mini">
+    ${getTitlePicSrc(wad) ? `<button type="button" class="home-mini-thumb-button" onclick="window.appActions.openTitlepic('${escapeJsString(getTitlePicSrc(wad))}', '${escapeJsString(wad.title || 'TITLEPIC')}')"><img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic"></button>` : `<div class="home-mini-thumb-placeholder">TITLEPIC</div>`}
+    <div class="home-mini-body">
+      <button class="inline-link-button home-mini-title" onclick="window.appActions.openWad('${escapeJsString(wad.id)}')">${escapeHtml(wad.title || 'Untitled')}</button>
+      <div class="card-meta"><span>${escapeHtml(capitalize(wad.type || 'wad'))}</span><span>${escapeHtml(wad.iwad || 'IWAD not set')}</span><span>${escapeHtml(latestRun?.difficulty || 'UV')}</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${summary.progressPercent}%"></div></div>
+      <div class="card-meta"><span>${summary.completedMaps} / ${Number(wad.totalMaps) || 0} maps</span><span>${formatPercent(summary.avgKillPercent)} kills</span><span>${formatTics(summary.totalTimeTics)}</span></div>
+    </div>
+  </article>`;
+}
+
+function renderHomeListRow(wad, metaText) {
+  const latestRun = getLatestRun(wad);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  return `<div class="home-list-row">
+    <button class="inline-link-button" onclick="window.appActions.openWad('${escapeJsString(wad.id)}')">${escapeHtml(wad.title || 'Untitled')}</button>
+    <span>${escapeHtml(metaText)}</span>
+    <span>${summary.completedMaps}/${Number(wad.totalMaps) || 0} maps</span>
+  </div>`;
+}
+
+function renderHomeEmpty(text) {
+  return `<div class="empty-state small-empty">${escapeHtml(text)}</div>`;
+}
+
+function renderHomeTypeButtons(wads) {
+  const types = Array.from(new Set(wads.map((wad) => wad.type).filter(Boolean))).slice(0, 4);
+  return types.map((type) => `<button class="filter-pill" onclick="window.appActions.openLibraryPreset('type','${escapeJsString(type)}')">${escapeHtml(capitalize(type))}</button>`).join('');
+}
+
+function renderHomeTagButtons(wads) {
+  const counts = new Map();
+  for (const wad of wads) for (const tag of getWadTags(wad)) counts.set(tag, (counts.get(tag) || 0) + 1);
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
+    .map(([tag, count]) => `<button class="filter-pill" onclick="window.appActions.openLibraryPreset('tag','${escapeJsString(tag)}')">#${escapeHtml(tag)} ${count}</button>`).join('');
+}
+
+function activateNav(viewName) {
+  document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === viewName));
+}
+
+function openLibraryPreset(key, value) {
+  state.libraryFilter = 'all';
+  state.libraryQuickFilters = {};
+  if (key === 'playState') state.libraryQuickFilters.playState = value;
+  else if (key) state.libraryQuickFilters[key] = value;
+  activateNav('library');
+  showView('library');
 }
 
 function renderLibrary() {
@@ -3157,7 +3370,36 @@ function formatLibraryDate(timestamp) {
   }
 }
 
+function formatLastPlayedRelative(timestamp) {
+  const ms = Number(timestamp) || 0;
+  if (!ms) return 'Last played never';
+  const diffMs = Math.max(0, Date.now() - ms);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  if (diffMs < hour) {
+    const minutes = Math.max(1, Math.floor(diffMs / minute));
+    return `Last played ${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < day) {
+    const hours = Math.max(1, Math.floor(diffMs / hour));
+    return `Last played ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < week) {
+    const days = Math.max(1, Math.floor(diffMs / day));
+    return `Last played ${days} day${days === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < 4 * week) {
+    const weeks = Math.max(1, Math.floor(diffMs / week));
+    return `Last played ${weeks} week${weeks === 1 ? '' : 's'} ago`;
+  }
+  return `Last played ${formatLibraryDate(ms)}`;
+}
+
 function renderLibraryWadCard(wad) {
+
+
   const latestRun = getLatestRun(wad);
   const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
   return `
@@ -4374,6 +4616,8 @@ This cannot be undone.`;
 
 window.appActions = {
   openWad: (wadId) => showWadDetail(wadId),
+  goStats: () => { activateNav('stats'); showView('stats'); },
+  openLibraryPreset,
   showLibraryMapSummary,
   showLibraryTxtInfo,
   showAllWadTags,
@@ -4488,11 +4732,7 @@ window.appActions = {
     render();
     restoreLibrarySearchFocus();
   },
-  goLibrary: () => {
-    document.querySelectorAll('.nav-button').forEach((b) => b.classList.remove('active'));
-    document.querySelector('[data-view="library"]').classList.add('active');
-    showView('library');
-  },
+  goLibrary: () => { activateNav('library'); showView('library'); },
   openFolder: (folderId) => {
     ensureFolderState();
     const normalized = normalizeFolderId(folderId);
