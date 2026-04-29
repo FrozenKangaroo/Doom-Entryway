@@ -1043,3 +1043,31 @@ code {
 .tiny-text {
   font-size: 0.78rem;
 }
+
+
+/* v1.1.0 library quick-info popups */
+.inline-link-button {
+  display: inline;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.inline-link-button:hover { color: var(--text); }
+.map-summary-link { font-weight: 700; }
+.library-map-summary-card, .library-txt-info-card {
+  width: min(1120px, 95vw);
+  max-height: 92vh;
+  overflow: hidden;
+}
+.modal-table-shell {
+  max-height: 66vh;
+  overflow: auto;
+}
+.library-txt-info-card .metadata-txt-preview {
+  max-height: 70vh;
+}

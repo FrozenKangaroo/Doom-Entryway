@@ -1,4 +1,4 @@
-# Doom Run Tracker
+# Doom Run Tracker 1.1.0
 
 Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
@@ -55,3 +55,18 @@ Settings are stored in `settings.json` beside the local server instead of inside
 ## v1.0.2 missing/moved file check
 
 Refresh All can now optionally check linked files and folders, repair moved paths by searching configured root folders, remove missing WAD cards, and queue WebDAV cleanup/move actions for the next sync.
+
+## v1.0.6 Refresh All delta results
+
+Refresh All now reports only changes since the previous Refresh All run. Unchanged save scans, unchanged screenshot scans, excluded WADs, and normal file-check confirmations are hidden from the results dialog. Errors and real changes such as updated map stats, changed screenshot galleries, missing files, moved files, and warnings are still shown.
+
+
+## v1.0.7 Companion TXT map-list parsing
+
+Companion TXT parsing now reads explicit map names and map authors only from dedicated Levels/Maps sections. This prevents Music, Credits, and Contributor Commentary sections from being mistaken for WAD titles or map names. TNT2-style lines such as `- MAP01: "Obituary" -------- mouldy / Luisinho` now import as the map title plus author instead of accidentally pulling soundtrack titles or commentary text.
+
+
+## v1.1.0 Library quick-info popups
+
+- The library progress count is now clickable and opens a popup with every map name, map author, and the latest run results.
+- WAD cards with a detected companion TXT now show a **Show TXT** button so the WAD text file can be read without opening the card.

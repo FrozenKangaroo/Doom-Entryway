@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.1.0"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -1201,6 +1201,30 @@ def _infer_iwad_from_maps(entries: list[dict], lumps: dict) -> str:
 
 
 
+def _txt_section_name(line: str) -> str:
+    """Return a normalised README/TXT section name for lines like '* Levels *'."""
+    match = re.match(r'^\s*\*+\s*([^*]+?)\s*\*+\s*$', str(line or '').strip())
+    if not match:
+        return ''
+    return re.sub(r'\s+', ' ', match.group(1).strip()).lower()
+
+
+_TXT_METADATA_FIELD_NAMES = {
+    'title', 'filename', 'author', 'email address', 'misc author info',
+    'description', 'game', 'map #', 'map', 'single player', 'cooperative',
+    'deathmatch', 'difficulty settings', 'new sounds', 'new graphics',
+    'new music', 'demos replaced', 'base', 'build time', 'editor(s) used',
+    'editors used', 'known bugs', 'may not run with', 'tested with',
+    'advanced engine needed', 'primary purpose', 'new levels', 'source port',
+}
+
+
+_TXT_NON_METADATA_SECTIONS = {
+    'levels', 'music', 'credits', 'contributor commentary', 'disclaimers',
+    'copyright', 'misc', 'testing/qa', 'graphics/textures', 'maps',
+}
+
+
 def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -> dict:
     try:
         txt_path, _expected = _companion_txt_path(mod_path, metadata_folder)
@@ -1212,6 +1236,7 @@ def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -
     fields = {}
     current_key = ''
     current_value_lines = []
+    current_section = ''
     key_re = re.compile(r'^\s*([A-Za-z][A-Za-z0-9 #/().,\-]+?)\s*:\s*(.*)$')
 
     def flush():
@@ -1224,12 +1249,24 @@ def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -
 
     for raw_line in text.split('\n'):
         line = raw_line.rstrip('\n')
-        match = key_re.match(line)
-        if match:
+        section = _txt_section_name(line)
+        if section:
             flush()
-            current_key = re.sub(r'\s+', ' ', match.group(1).strip())
-            current_value_lines = [match.group(2).strip()]
-        elif current_key and (line.startswith(' ') or line.startswith('\t')):
+            current_section = section
+            continue
+        if re.match(r'^\s*=+\s*$', line):
+            flush()
+            continue
+        match = key_re.match(line)
+        if match and current_section not in _TXT_NON_METADATA_SECTIONS:
+            key = re.sub(r'\s+', ' ', match.group(1).strip())
+            key_l = key.lower()
+            if key_l in _TXT_METADATA_FIELD_NAMES and not line.lstrip().startswith(('-', '*')):
+                flush()
+                current_key = key
+                current_value_lines = [match.group(2).strip()]
+                continue
+        if current_key and current_section not in _TXT_NON_METADATA_SECTIONS and (line.startswith(' ') or line.startswith('\t')):
             current_value_lines.append(line.strip())
         else:
             flush()
@@ -1247,7 +1284,7 @@ def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -
     author = get('Author')
     new_levels = get('New levels', 'New Levels')
     game = get('Game')
-    source_port = get('Advanced engine needed')
+    source_port = get('Advanced engine needed', 'Source Port')
     description = get('Description')
     map_range = get('Map #', 'Map')
 
@@ -1270,19 +1307,12 @@ def _extract_companion_txt_metadata(mod_path: Path, metadata_folder: str = '') -
         result['totalMaps'] = total_maps
         result['type'] = _classify_pwad_type(total_maps)
 
-    # Prefer explicit map lists because they avoid credits/test/title-screen maps.
     if parsed_map_list:
         result['maps'] = parsed_map_list
         result['totalMaps'] = len(parsed_map_list)
         result['type'] = _classify_pwad_type(len(parsed_map_list))
         return result
 
-    # Do not turn TXT map ranges such as "MAP01; MAP37" or "MAP01-32" into
-    # display-name entries here. Those ranges are useful for Total Maps, but they
-    # do not contain real level titles. Earlier builds generated MAP01/MAP02
-    # placeholders from these ranges and overwrote better names parsed from
-    # UMAPINFO/MAPINFO/DEHACKED when a companion TXT was present. Only explicit
-    # map-list lines like "MAP01: Central" are allowed to override embedded names.
     return result
 
 
@@ -1309,18 +1339,58 @@ def _parse_txt_new_levels_count(value: str) -> int:
     return 0
 
 
+def _txt_named_section(text: str, *section_names: str) -> str:
+    wanted = {str(name or '').strip().lower() for name in section_names if str(name or '').strip()}
+    lines = str(text or '').replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    collecting = False
+    collected: list[str] = []
+    for line in lines:
+        section = _txt_section_name(line)
+        if section:
+            if collecting and section not in wanted:
+                break
+            collecting = section in wanted
+            continue
+        if collecting:
+            collected.append(line)
+    return '\n'.join(collected)
+
+
+def _clean_txt_map_title(value: str) -> str:
+    title = str(value or '').strip()
+    quoted = re.match(r'^"([^"]+)"', title)
+    if quoted:
+        return quoted.group(1).strip()
+    title = title.strip('"').strip()
+    return re.sub(r'\s+', ' ', title).strip()
+
+
 def _maps_from_txt_map_list(text: str) -> list[dict]:
+    section = _txt_named_section(text, 'levels', 'maps')
+    if not section:
+        return []
     maps = []
-    for raw_line in str(text or '').replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+    for raw_line in section.split('\n'):
         line = raw_line.strip()
-        match = re.match(r'^(MAP\d{1,2}|E\d+M\d+)\s*[:=-]\s*(.+?)\s*$', line, flags=re.I)
+        if not line or re.match(r'^(secret|bonus)\s*:?$', line, flags=re.I):
+            continue
+        match = re.match(r'^-?\s*(MAP\d{1,2}|E\d+M\d+)\s*[:=-]\s*(.+?)\s*$', line, flags=re.I)
         if not match:
             continue
         slot = match.group(1).upper()
-        title = match.group(2).strip()
-        title = re.sub(r'\s*\((?:guest map|by|author|mapper).*?\)\s*$', '', title, flags=re.I).strip()
-        title = title.rstrip('.').strip() or slot
-        maps.append({'levelName': slot, 'displayName': title, 'mapAuthor': ''})
+        rest = match.group(2).strip()
+        author = ''
+        title_part = rest
+        split = re.split(r'\s+-{2,}\s+', rest, maxsplit=1)
+        if len(split) == 2:
+            title_part, author = split[0].strip(), split[1].strip()
+        else:
+            qsplit = re.match(r'^("[^"]+")\s+-\s+(.+)$', rest)
+            if qsplit:
+                title_part, author = qsplit.group(1).strip(), qsplit.group(2).strip()
+        title = _clean_txt_map_title(title_part) or slot
+        author = re.sub(r'\s+', ' ', author).strip()
+        maps.append({'levelName': slot, 'displayName': title, 'mapAuthor': author})
     return _sort_map_entries(_dedupe_map_entries(maps))
 
 

@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.1.0";
 const DATABASE_API = '/api/database';
 
 const state = {
@@ -1520,9 +1520,28 @@ async function importZdsFile(file, runId) {
 }
 
 
+function refreshStatSignature(map) {
+  if (!map) return '';
+  return [
+    String(map.levelName || '').trim().toUpperCase(),
+    Number(map.killcount) || 0,
+    Number(map.totalkills) || 0,
+    Number(map.itemcount) || 0,
+    Number(map.totalitems) || 0,
+    Number(map.secretcount) || 0,
+    Number(map.totalsecrets) || 0,
+    Number(map.leveltime) || 0,
+    String(map.difficulty || '').trim(),
+  ].join('|');
+}
+
 function mergeImportedLevelsIntoRun(run, levels, fileName, saveDifficulty = '') {
   let imported = 0;
   let newlyPlayed = 0;
+  let changedMaps = 0;
+  let addedMaps = 0;
+  let unchangedMaps = 0;
+  const changedLevelNames = [];
   if (!Array.isArray(run.maps)) run.maps = [];
 
   for (const level of levels) {
@@ -1533,20 +1552,32 @@ function mergeImportedLevelsIntoRun(run, levels, fileName, saveDifficulty = '') 
     const incoming = normalizeImportedLevel(level, fileName, existingMap, saveDifficulty);
     const isNowPlayed = !isUnplayedPlaceholderMap(incoming);
     const existingIndex = run.maps.findIndex((map) => String(map.levelName || '').trim().toUpperCase() === incoming.levelName.toUpperCase());
+    const beforeSignature = existingIndex >= 0 ? refreshStatSignature(run.maps[existingIndex]) : '';
+    const incomingSignature = refreshStatSignature(incoming);
 
     if (existingIndex >= 0) {
       const existing = run.maps[existingIndex];
-      run.maps[existingIndex] = {
-        ...existing,
-        ...incoming,
-        id: existing.id,
-        displayName: existing.displayName || incoming.displayName,
-        mapAuthor: existing.mapAuthor || incoming.mapAuthor,
-        sourceType: existing.sourceType === 'manual' ? 'edited' : 'imported',
-        updatedAt: new Date().toISOString(),
-      };
+      const changed = beforeSignature !== incomingSignature;
+      if (changed) {
+        run.maps[existingIndex] = {
+          ...existing,
+          ...incoming,
+          id: existing.id,
+          displayName: existing.displayName || incoming.displayName,
+          mapAuthor: existing.mapAuthor || incoming.mapAuthor,
+          sourceType: existing.sourceType === 'manual' ? 'edited' : 'imported',
+          updatedAt: new Date().toISOString(),
+        };
+        changedMaps += 1;
+        changedLevelNames.push(incoming.levelName);
+      } else {
+        unchangedMaps += 1;
+      }
     } else {
       run.maps.push(incoming);
+      addedMaps += 1;
+      changedMaps += 1;
+      changedLevelNames.push(incoming.levelName);
     }
 
     if (wasUnplayed && isNowPlayed) newlyPlayed += 1;
@@ -1554,7 +1585,7 @@ function mergeImportedLevelsIntoRun(run, levels, fileName, saveDifficulty = '') 
   }
 
   sortRunMaps(run);
-  return { imported, newlyPlayed };
+  return { imported, newlyPlayed, changedMaps, addedMaps, unchangedMaps, changedLevelNames };
 }
 
 
@@ -1842,6 +1873,23 @@ async function autoDetectSaveFolder(wadId) {
   }
 }
 
+function refreshScreenshotSignature(screenshots) {
+  return (Array.isArray(screenshots) ? screenshots : [])
+    .map((shot) => [
+      String(shot?.filePath || '').trim(),
+      String(shot?.fileName || '').trim(),
+      Number(shot?.modifiedTime) || 0,
+      Number(shot?.sizeBytes) || 0,
+    ].join('|'))
+    .sort()
+    .join('\n');
+}
+
+function isRefreshAllChangeResult(entry) {
+  const status = String(entry?.status || '').toLowerCase();
+  return ['updated', 'deleted', 'missing', 'error', 'warning'].includes(status);
+}
+
 async function refreshAllTrackedData() {
   let wads = Array.isArray(state.app.wads) ? state.app.wads : [];
   const settings = normalizeImportedSettings(state.app?.settings || {});
@@ -1862,12 +1910,14 @@ async function refreshAllTrackedData() {
         wads = Array.isArray(state.app.wads) ? state.app.wads : [];
       }
       const entries = Array.isArray(payload.results) ? payload.results : [];
-      fileCheckResults.push(...entries.map((entry) => ({
-        title: entry.title || 'File check',
-        kind: entry.kind || 'Missing/deleted files',
-        status: entry.status || 'Checked',
-        detail: entry.detail || '',
-      })));
+      fileCheckResults.push(...entries
+        .filter(isRefreshAllChangeResult)
+        .map((entry) => ({
+          title: entry.title || 'File check',
+          kind: entry.kind || 'Missing/deleted files',
+          status: entry.status || 'Checked',
+          detail: entry.detail || '',
+        })));
     } catch (error) {
       console.error(error);
       fileCheckResults.push({ title: 'File check', kind: 'Missing/deleted files', status: 'Error', detail: error.message || 'Missing/deleted file check failed.' });
@@ -1879,11 +1929,8 @@ async function refreshAllTrackedData() {
   const screenshotTargets = refreshableWads.filter((wad) => String(wad.screenshotFolderPath || '').trim());
   if (!saveTargets.length && !screenshotTargets.length) {
     if (fileCheckResults.length) {
-      showRefreshAllResults([
-        ...fileCheckResults,
-        ...excludedTargets.map((wad) => ({ title: wad.title, kind: 'Refresh All', status: 'Skipped', detail: 'Excluded from Refresh All in Edit WAD Info.' })),
-      ], { excludedTargets: excludedTargets.length });
-      showAlert('success', 'Refresh All file check complete. No WAD cards have refreshable save or screenshot folders set.');
+      showRefreshAllResults(fileCheckResults, { excludedTargets: excludedTargets.length, changedResults: fileCheckResults.length });
+      showAlert('success', 'Refresh All file check complete. No refreshable save or screenshot changes found.');
       render();
       return;
     }
@@ -1891,25 +1938,12 @@ async function refreshAllTrackedData() {
       ? 'No non-excluded WAD cards have a Local Save Folder or Screenshot Folder set.'
       : 'No WAD cards have a Local Save Folder or Screenshot Folder set.');
     if (excludedTargets.length) {
-      showRefreshAllResults(excludedTargets.map((wad) => ({
-        title: wad.title,
-        kind: 'Refresh All',
-        status: 'Skipped',
-        detail: 'Excluded from Refresh All in Edit WAD Info.',
-      })), { excludedTargets: excludedTargets.length });
+      showRefreshAllResults([], { excludedTargets: excludedTargets.length, changedResults: 0 });
     }
     return;
   }
 
-  const results = [
-    ...fileCheckResults,
-    ...excludedTargets.map((wad) => ({
-      title: wad.title,
-      kind: 'Refresh All',
-      status: 'Skipped',
-      detail: 'Excluded from Refresh All in Edit WAD Info.',
-    })),
-  ];
+  const results = [...fileCheckResults];
   let saveUpdatedMaps = 0;
   let screenshotUpdatedWads = 0;
   let hadChanges = false;
@@ -1920,7 +1954,6 @@ async function refreshAllTrackedData() {
     const folderPath = String(wad.saveFolderPath || '').trim();
     const run = wad.runs?.find((entry) => entry.id === wad.selectedRunId) || getLatestRun(wad);
     if (!run) {
-      results.push({ title: wad.title, kind: 'Latest .zds', status: 'Skipped', detail: 'No run exists to update.' });
       continue;
     }
 
@@ -1939,15 +1972,21 @@ async function refreshAllTrackedData() {
       const mergeResult = mergeImportedLevelsIntoRun(run, levels, payload.fileName || 'latest.zds', saveDifficulty);
       const imported = Number(mergeResult?.imported ?? mergeResult) || 0;
       const newlyPlayed = Number(mergeResult?.newlyPlayed) || 0;
+      const changedMaps = Number(mergeResult?.changedMaps) || 0;
       const stateChange = applyAutomaticPlayStateFromRefresh(wad, run, newlyPlayed);
-      saveUpdatedMaps += imported;
-      hadChanges = true;
-      results.push({
-        title: wad.title,
-        kind: 'Latest .zds',
-        status: 'Updated',
-        detail: `${imported} map record${imported === 1 ? '' : 's'} from ${payload.fileName || 'latest .zds'}${saveDifficulty ? ` (${saveDifficulty})` : ''}.${stateChange ? ` ${stateChange}` : ''}`,
-      });
+      if (changedMaps || stateChange) {
+        saveUpdatedMaps += changedMaps;
+        hadChanges = true;
+        const allChangedNames = Array.isArray(mergeResult?.changedLevelNames) ? mergeResult.changedLevelNames : [];
+        const changedNames = allChangedNames.slice(0, 8);
+        const changedSuffix = changedNames.length ? ` Changed: ${changedNames.join(', ')}${allChangedNames.length > changedNames.length ? ', …' : ''}.` : '';
+        results.push({
+          title: wad.title,
+          kind: 'Latest .zds',
+          status: 'Updated',
+          detail: `${changedMaps} changed map record${changedMaps === 1 ? '' : 's'} from ${payload.fileName || 'latest .zds'}${saveDifficulty ? ` (${saveDifficulty})` : ''}.${changedSuffix}${stateChange ? ` ${stateChange}` : ''}`,
+        });
+      }
     } catch (error) {
       console.error(error);
       results.push({ title: wad.title, kind: 'Latest .zds', status: 'Error', detail: error.message || 'Refresh failed.' });
@@ -1967,17 +2006,21 @@ async function refreshAllTrackedData() {
 
       const screenshots = Array.isArray(payload.screenshots) ? payload.screenshots : [];
       const before = Array.isArray(wad.screenshots) ? wad.screenshots.length : 0;
-      wad.screenshots = screenshots;
-      wad.screenshotFolderPath = payload.folderPath || folderPath;
-      wad.lastScreenshotScanAt = new Date().toISOString();
-      screenshotUpdatedWads += 1;
-      hadChanges = true;
-      results.push({
-        title: wad.title,
-        kind: 'Screenshots',
-        status: 'Updated',
-        detail: `${screenshots.length} screenshot${screenshots.length === 1 ? '' : 's'} found (${before} before).`,
-      });
+      const beforeSignature = refreshScreenshotSignature(wad.screenshots);
+      const afterSignature = refreshScreenshotSignature(screenshots);
+      if (beforeSignature !== afterSignature || wad.screenshotFolderPath !== (payload.folderPath || folderPath)) {
+        wad.screenshots = screenshots;
+        wad.screenshotFolderPath = payload.folderPath || folderPath;
+        wad.lastScreenshotScanAt = new Date().toISOString();
+        screenshotUpdatedWads += 1;
+        hadChanges = true;
+        results.push({
+          title: wad.title,
+          kind: 'Screenshots',
+          status: 'Updated',
+          detail: `${screenshots.length} screenshot${screenshots.length === 1 ? '' : 's'} found (${before} before).`,
+        });
+      }
     } catch (error) {
       console.error(error);
       results.push({ title: wad.title, kind: 'Screenshots', status: 'Error', detail: error.message || 'Screenshot scan failed.' });
@@ -1986,9 +2029,12 @@ async function refreshAllTrackedData() {
 
   if (hadChanges) await saveState();
   render();
-  showRefreshAllResults(results, { saveTargets: saveTargets.length, screenshotTargets: screenshotTargets.length, excludedTargets: excludedTargets.length, saveUpdatedMaps, screenshotUpdatedWads });
   const errors = results.filter((entry) => entry.status === 'Error').length;
-  showAlert(errors ? 'error' : 'success', `Refresh All complete: ${saveUpdatedMaps} map record${saveUpdatedMaps === 1 ? '' : 's'} updated, ${screenshotUpdatedWads} screenshot folder${screenshotUpdatedWads === 1 ? '' : 's'} refreshed${errors ? `, ${errors} error${errors === 1 ? '' : 's'}` : ''}.`);
+  const changedResults = results.filter((entry) => entry.status !== 'Error').length;
+  showRefreshAllResults(results, { saveTargets: saveTargets.length, screenshotTargets: screenshotTargets.length, excludedTargets: excludedTargets.length, saveUpdatedMaps, screenshotUpdatedWads, changedResults });
+  showAlert(errors ? 'error' : 'success', changedResults || errors
+    ? `Refresh All complete: ${saveUpdatedMaps} changed map record${saveUpdatedMaps === 1 ? '' : 's'}, ${screenshotUpdatedWads} changed screenshot folder${screenshotUpdatedWads === 1 ? '' : 's'}${errors ? `, ${errors} error${errors === 1 ? '' : 's'}` : ''}.`
+    : 'Refresh All complete: no changes since the last Refresh All.');
 }
 
 function showRefreshAllResults(results, summary = {}) {
@@ -2015,11 +2061,11 @@ function showRefreshAllResults(results, summary = {}) {
         <button type="submit" class="ghost-button">✕</button>
       </div>
       <p class="muted">Scanned ${Number(summary.saveTargets) || 0} save folder${Number(summary.saveTargets) === 1 ? '' : 's'} and ${Number(summary.screenshotTargets) || 0} screenshot folder${Number(summary.screenshotTargets) === 1 ? '' : 's'}.</p>
-      <p class="muted">Updated ${Number(summary.saveUpdatedMaps) || 0} map record${Number(summary.saveUpdatedMaps) === 1 ? '' : 's'} and refreshed ${Number(summary.screenshotUpdatedWads) || 0} screenshot ${Number(summary.screenshotUpdatedWads) === 1 ? 'gallery' : 'galleries'}.</p>
+      <p class="muted">Showing only changes since the previous Refresh All: ${Number(summary.saveUpdatedMaps) || 0} changed map record${Number(summary.saveUpdatedMaps) === 1 ? '' : 's'} and ${Number(summary.screenshotUpdatedWads) || 0} changed screenshot ${Number(summary.screenshotUpdatedWads) === 1 ? 'gallery' : 'galleries'}.</p>
       <div class="table-shell refresh-all-results-table">
         <table>
           <thead><tr><th>WAD</th><th>Task</th><th>Status</th><th>Result</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4">No results.</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="4">No changes since the last Refresh All.</td></tr>'}</tbody>
         </table>
       </div>
       <div class="form-actions"><button type="submit" class="primary-button">Done</button></div>
@@ -2801,7 +2847,7 @@ function renderLibraryWadCard(wad) {
             <span class="status-pill state-${wad.playState || 'plan'}">${playStateLabel(wad.playState || 'plan')}</span>
           </div>
           <div class="progress-row">
-            <div class="card-meta"><span>${summary.completedMaps} / ${wad.totalMaps} maps complete</span><span>${summary.runCount} run${summary.runCount === 1 ? '' : 's'}</span></div>
+            <div class="card-meta"><span>${renderLibraryMapSummaryButton(wad, summary, 'maps complete')}</span><span>${summary.runCount} run${summary.runCount === 1 ? '' : 's'}</span></div>
             <div class="progress-track"><div class="progress-fill" style="width:${summary.progressPercent}%"></div></div>
           </div>
           <div class="metric-chip-row">
@@ -2836,7 +2882,7 @@ function renderCompactWadRow(wad) {
           <span class="status-pill state-${wad.playState || 'plan'}">${playStateLabel(wad.playState || 'plan')}</span>
         </div>
         <div class="compact-stat-line">
-          <span>${summary.completedMaps}/${wad.totalMaps} maps</span>
+          <span>${renderLibraryMapSummaryButton(wad, summary, 'maps')}</span>
           <span>K ${formatPercent(summary.avgKillPercent)}</span>
           <span>I ${formatPercent(summary.avgItemPercent)}</span>
           <span>S ${formatPercent(summary.avgSecretPercent)}</span>
@@ -2861,6 +2907,144 @@ function renderCompactWadRow(wad) {
     </article>`;
 }
 
+
+function renderLibraryMapSummaryButton(wad, summary, suffix = 'maps') {
+  const safeId = escapeJsString(wad.id);
+  return `<button type="button" class="inline-link-button map-summary-link" onclick="window.appActions.showLibraryMapSummary('${safeId}')" title="Show map names, authors, and latest run results">${Number(summary.completedMaps) || 0} / ${Number(wad.totalMaps) || 0} ${escapeHtml(suffix)}</button>`;
+}
+
+function hasCompanionTxt(wad) {
+  return Boolean(String(wad?.txtMetadataFileName || wad?.txtMetadataFile || '').trim());
+}
+
+function renderWadTxtInfoButton(wad) {
+  if (!hasCompanionTxt(wad)) return '';
+  return `<button class="secondary-button" onclick="window.appActions.showLibraryTxtInfo('${escapeJsString(wad.id)}')">Show TXT</button>`;
+}
+
+function buildMapSummaryRows(wad, latestRun) {
+  const maps = [...(latestRun?.maps || [])].sort(compareMapSlots);
+  const bySlot = new Map(maps.map((map) => [String(map.levelName || '').toUpperCase(), map]));
+  const totalMaps = Math.max(Number(wad.totalMaps) || maps.length || 0, maps.length || 0);
+  const slots = [];
+
+  for (let index = 1; index <= totalMaps; index += 1) {
+    const slot = `MAP${String(index).padStart(2, '0')}`;
+    slots.push(bySlot.get(slot) || { levelName: slot, displayName: '', mapAuthor: '' });
+  }
+
+  for (const map of maps) {
+    const slot = String(map.levelName || '').toUpperCase();
+    if (!slots.some((entry) => String(entry.levelName || '').toUpperCase() === slot)) slots.push(map);
+  }
+
+  return slots.sort(compareMapSlots);
+}
+
+function showLibraryMapSummary(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  if (!wad) return;
+  const latestRun = getLatestRun(wad);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const rows = buildMapSummaryRows(wad, latestRun).map((map) => {
+    const hasAnyResult = Boolean(Number(map.totalkills) || Number(map.totalitems) || Number(map.totalsecrets) || Number(map.leveltime) || Number(map.killcount) || Number(map.itemcount) || Number(map.secretcount));
+    const isPlayed = hasAnyResult && !isUnplayedPlaceholderMap(map);
+    const resultText = isPlayed
+      ? `K ${renderStatValue(map.killcount, map.totalkills)} • I ${renderStatValue(map.itemcount, map.totalitems)} • S ${renderStatValue(map.secretcount, map.totalsecrets)}`
+      : 'Unplayed';
+    return `
+      <tr>
+        <td><strong>${escapeHtml(map.levelName || '')}</strong></td>
+        <td>${escapeHtml(map.displayName || map.levelName || '')}</td>
+        <td>${escapeHtml(map.mapAuthor || '')}</td>
+        <td>${escapeHtml(resultText)}</td>
+        <td>${escapeHtml(isPlayed ? formatTics(map.leveltime) : '—')}</td>
+        <td>${renderMedalBadge(getMedal(map))}</td>
+      </tr>`;
+  }).join('');
+
+  let dialog = document.getElementById('libraryMapSummaryDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'libraryMapSummaryDialog';
+    dialog.className = 'modal';
+    document.body.appendChild(dialog);
+  }
+
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-card library-map-summary-card">
+      <div class="modal-head">
+        <div>
+          <h3>${escapeHtml(wad.title)} — Map Summary</h3>
+          <p class="muted">Latest run: ${escapeHtml(latestRun?.name || 'None')} • ${Number(summary.completedMaps) || 0} / ${Number(wad.totalMaps) || 0} maps complete</p>
+        </div>
+        <button type="submit" class="ghost-button">✕</button>
+      </div>
+      <div class="table-shell modal-table-shell">
+        <table>
+          <thead><tr><th>Map</th><th>Name</th><th>Author</th><th>Latest result</th><th>Time</th><th>Medal</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6">No map metadata or runs found.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="modal-actions"><button type="submit" class="primary-button">Close</button></div>
+    </form>`;
+  dialog.showModal();
+}
+
+async function showLibraryTxtInfo(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  if (!wad || !hasCompanionTxt(wad)) return;
+  let dialog = document.getElementById('libraryTxtInfoDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'libraryTxtInfoDialog';
+    dialog.className = 'modal';
+    document.body.appendChild(dialog);
+  }
+
+  const fileLabel = wad.txtMetadataFileName || fileNameFromPath(wad.txtMetadataFile || '') || 'Companion TXT';
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-card library-txt-info-card">
+      <div class="modal-head">
+        <div>
+          <h3>${escapeHtml(wad.title)} — TXT Info</h3>
+          <p class="muted">${escapeHtml(fileLabel)}</p>
+        </div>
+        <button type="submit" class="ghost-button">✕</button>
+      </div>
+      <pre class="metadata-txt-preview library-txt-preview">Loading companion TXT...</pre>
+      <div class="modal-actions"><button type="submit" class="primary-button">Close</button></div>
+    </form>`;
+  dialog.showModal();
+
+  const previewEl = dialog.querySelector('.library-txt-preview');
+  const metadataFolder = getAppSetting('defaultMetadataFolder');
+  if (!wad.pwadPath || !metadataFolder) {
+    previewEl.textContent = wad.txtMetadataFile
+      ? `Known TXT: ${wad.txtMetadataFile}\n\nSet the WAD path and Default metadata TXT folder to read the full file here.`
+      : 'Set the WAD path and Default metadata TXT folder to read the full file here.';
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/read-companion-txt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wadPath: wad.pwadPath, metadataFolder }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'TXT preview failed.');
+    if (!payload.found) {
+      previewEl.textContent = `TXT was previously found as ${fileLabel}, but no exact TXT match was found in the current metadata folder.`;
+      return;
+    }
+    previewEl.textContent = payload.content || '(TXT file was empty)';
+  } catch (error) {
+    console.error(error);
+    previewEl.textContent = `${error.message || 'TXT preview failed.'} Make sure local_server.py is running and the metadata folder exists.`;
+  }
+}
+
 function renderWadLibraryActions(wad) {
   return `
     <div class="control-row library-entry-actions">
@@ -2869,6 +3053,7 @@ function renderWadLibraryActions(wad) {
           ${renderFolderOptions(wad.folderId, { includeRoot: true })}
         </select>
       </label>
+      ${renderWadTxtInfoButton(wad)}
       <button class="secondary-button" onclick="window.appActions.editWad('${wad.id}')">Edit</button>
       <button class="primary-button" onclick="window.appActions.openWad('${wad.id}')">Open</button>
       <button class="danger-button" onclick="window.appActions.deleteWad('${wad.id}')">Delete</button>
@@ -3814,6 +3999,8 @@ This cannot be undone.`;
 
 window.appActions = {
   openWad: (wadId) => showWadDetail(wadId),
+  showLibraryMapSummary,
+  showLibraryTxtInfo,
   editWad: openEditWadDialog,
   refreshWadMetadata: refreshWadMetadataFromDisk,
   associateWadFile,
