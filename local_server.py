@@ -45,7 +45,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.2"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -1982,12 +1982,19 @@ def _check_missing_and_deleted_files(payload: dict | None = None) -> dict:
                 else:
                     result(wad, "Metadata TXT", "Found", f"Found companion TXT at {found_txt}.")
             else:
-                _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], txt_name))
-                if wad.get("txtMetadataFile") or wad.get("txtMetadataFileName"):
-                    wad["txtMetadataFile"] = ""
-                    wad["txtMetadataFileName"] = ""
-                changed = True
-                result(wad, "Metadata TXT", "Missing", f"{txt_name} was not found. Queued WebDAV delete for that companion TXT.")
+                # Companion TXT files are optional. Most /idgames uploads have one, but
+                # official IWADs/expansions and non-/idgames releases often do not.
+                # Only treat this as a real change when a stale TXT path was already
+                # stored in the database; otherwise keep Refresh All quiet.
+                if previous_txt:
+                    _append_webdav_delete_tombstone(settings, _remote_path(SYNC_ROOT_FOLDERS["metadata"], txt_name))
+                    if wad.get("txtMetadataFile") or wad.get("txtMetadataFileName"):
+                        wad["txtMetadataFile"] = ""
+                        wad["txtMetadataFileName"] = ""
+                    changed = True
+                    result(wad, "Metadata TXT", "Updated", f"Removed stale companion TXT link for {txt_name}; no current TXT was found.")
+                else:
+                    result(wad, "Metadata TXT", "Optional", f"No companion TXT found for {txt_name}; this is normal for official or non-/idgames WADs.")
 
         # Titlepic PNG: clear the database reference if the PNG is gone and cannot be found.
         titlepic = str(wad.get("titlePicFileName") or "").strip()
@@ -3348,6 +3355,14 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/read-companion-txt":
             try:
                 payload = _read_json_body(self)
+                txt_raw = str(payload.get("txtPath", "")).strip()
+                if txt_raw:
+                    txt_path = Path(os.path.expanduser(txt_raw)).resolve()
+                    if not txt_path.is_file() or txt_path.suffix.lower() != ".txt":
+                        raise ValueError("Stored TXT path was not found or is not a .txt file.")
+                    content = txt_path.read_bytes().decode("utf-8", errors="replace")
+                    _json_response(self, 200, {"ok": True, "found": True, "fileName": txt_path.name, "filePath": str(txt_path), "content": content})
+                    return
                 wad_raw = str(payload.get("wadPath", "")).strip()
                 metadata_folder = str(payload.get("metadataFolder", "")).strip()
                 if not wad_raw:
@@ -3360,7 +3375,6 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})
             return
-
         if parsed.path == "/api/extract-titlepic":
             try:
                 payload = _read_json_body(self)

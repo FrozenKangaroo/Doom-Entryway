@@ -1045,7 +1045,7 @@ code {
 }
 
 
-/* v1.1.0 library quick-info popups */
+/* v1.1.1 reliability polish + library quick-info popups */
 .inline-link-button {
   display: inline;
   border: 0;
@@ -1070,4 +1070,42 @@ code {
 }
 .library-txt-info-card .metadata-txt-preview {
   max-height: 70vh;
+}
+
+/* v1.2.0 library sorting */
+.library-sort-controls {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sort-select-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.sort-select {
+  min-width: 190px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text);
+}
+.sort-direction-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+.sort-direction-button:hover {
+  background: var(--accent-soft);
+}
+.sort-direction-icon {
+  line-height: 1;
 }

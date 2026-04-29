@@ -1,5 +1,17 @@
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const DATABASE_API = '/api/database';
+
+const LIBRARY_SORT_OPTIONS = [
+  { key: 'title', label: 'Alphabetical', hint: 'A-Z by WAD title' },
+  { key: 'lastPlayed', label: 'Last played', hint: 'Newest known .zds modified date' },
+  { key: 'dateAdded', label: 'Date added', hint: 'WAD card creation date' },
+  { key: 'completion', label: 'Completion %', hint: 'Latest run maps complete / total maps' },
+  { key: 'mapCount', label: 'Map count', hint: 'Total map slots' },
+  { key: 'playState', label: 'Play state', hint: 'Plan, current, hold, dropped, completed' },
+  { key: 'author', label: 'Author', hint: 'WAD author name' },
+  { key: 'iwad', label: 'IWAD', hint: 'Base game / IWAD field' },
+  { key: 'updated', label: 'Recently changed', hint: 'WAD card metadata update time' },
+];
 
 const state = {
   app: { wads: [], folders: [], settings: {} },
@@ -12,6 +24,8 @@ const state = {
   librarySearch: '',
   libraryViewMode: 'card',
   libraryDensity: 680,
+  librarySortKey: 'title',
+  librarySortDirection: 'asc',
   currentFolderId: null,
   mapInputMode: 'counts',
   databaseReady: false,
@@ -95,6 +109,8 @@ function wireEvents() {
                            createdAt: new Date().toISOString(),
                            selectedRunId: run.id,
                            metadataSource: metadata?.metadataSource || '',
+                           txtMetadataFile: metadata?.txtMetadataFile || '',
+                           txtMetadataFileName: metadata?.txtMetadataFileName || '',
                            runs: [run],
     };
     state.app.wads.unshift(wad);
@@ -315,7 +331,8 @@ function updateNewWadMetadataStatus(message = '') {
   }
   const mapText = `${metadata.totalMaps || metadata.maps?.length || 1} map${Number(metadata.totalMaps || metadata.maps?.length || 1) === 1 ? '' : 's'}`;
   const sourceText = metadata.metadataSource ? ` via ${metadata.metadataSource}` : '';
-  status.textContent = `Selected ${metadata.relativePath || metadata.fileName}. Detected ${mapText}${sourceText}. Check the fields, then Save.`;
+  const txtText = metadata.txtMetadataFileName ? " Companion TXT: " + metadata.txtMetadataFileName + "." : "";
+  status.textContent = `Selected ${metadata.relativePath || metadata.fileName}. Detected ${mapText}${sourceText}.${txtText} Check the fields, then Save.`;
 }
 
 
@@ -504,8 +521,10 @@ function renderLibrary() {
 
   const filteredWads = stateFilteredWads.filter((wad) => matchesLibrarySearch(wad, state.librarySearch));
   const childFolders = hasSearch ? [] : getChildFolders(state.currentFolderId);
+  const sortedFolders = sortLibraryFolders(childFolders);
+  const sortedWads = sortLibraryWads(filteredWads);
 
-  const folderCards = childFolders.map((folder) => {
+  const folderCards = sortedFolders.map((folder) => {
     const directCount = state.app.wads.filter((wad) => normalizeFolderId(wad.folderId) === folder.id).length;
     const totalCount = getDescendantFolderIds(folder.id).reduce((count, folderId) => {
       return count + state.app.wads.filter((wad) => normalizeFolderId(wad.folderId) === folderId).length;
@@ -526,7 +545,7 @@ function renderLibrary() {
     </article>`;
   }).join('');
 
-  const wadEntries = filteredWads.map((wad) => state.libraryViewMode === 'compact'
+  const wadEntries = sortedWads.map((wad) => state.libraryViewMode === 'compact'
     ? renderCompactWadRow(wad)
     : renderLibraryWadCard(wad)
   ).join('');
@@ -570,6 +589,8 @@ function renderLibrary() {
   ${hasSearch ? `<button class="ghost-button" onclick="window.appActions.clearLibrarySearch()">Clear</button>` : ''}
   </div>
   ${renderLibraryViewControls()}
+  ${renderLibrarySortControls()}
+  <p class="subtle library-search-hint">Folders stay pinned first. Showing ${sortedWads.length} WAD card${sortedWads.length === 1 ? '' : 's'} sorted by ${escapeHtml(getLibrarySortLabel(state.librarySortKey))} (${state.librarySortDirection === 'asc' ? 'ascending' : 'descending'}).</p>
   ${hasSearch ? `<p class="subtle library-search-hint">Search ignores folder scope. Showing ${filteredWads.length} of ${stateFilteredWads.length} entries for “${escapeHtml(state.librarySearch.trim())}”.</p>` : ''}
   </section>
   ${folderCards ? `<div class="folder-grid">${folderCards}</div>` : ''}
@@ -1887,7 +1908,14 @@ function refreshScreenshotSignature(screenshots) {
 
 function isRefreshAllChangeResult(entry) {
   const status = String(entry?.status || '').toLowerCase();
-  return ['updated', 'deleted', 'missing', 'error', 'warning'].includes(status);
+  const kind = String(entry?.kind || '').toLowerCase();
+  if (kind === 'metadata txt' && ['missing', 'optional', 'found'].includes(status)) return false;
+  return ['updated', 'deleted', 'error', 'warning'].includes(status);
+}
+
+function isMissingLatestZdsError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('no .zds files found') || message.includes('no zds files found');
 }
 
 async function refreshAllTrackedData() {
@@ -1965,6 +1993,7 @@ async function refreshAllTrackedData() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Local server refresh failed.');
+      recordLatestSaveInfo(wad, payload);
       const levels = payload?.statistics?.levels || payload?.levels;
       if (!Array.isArray(levels)) throw new Error('The local server did not return statistics.levels[].');
 
@@ -1988,6 +2017,10 @@ async function refreshAllTrackedData() {
         });
       }
     } catch (error) {
+      if (isMissingLatestZdsError(error)) {
+        // No save yet usually means this WAD has not been played. Keep Refresh All clean.
+        continue;
+      }
       console.error(error);
       results.push({ title: wad.title, kind: 'Latest .zds', status: 'Error', detail: error.message || 'Refresh failed.' });
     }
@@ -2073,6 +2106,17 @@ function showRefreshAllResults(results, summary = {}) {
   dialog.showModal();
 }
 
+function recordLatestSaveInfo(wad, payload) {
+  if (!wad || !payload) return;
+  const modified = Number(payload.modifiedTime) || 0;
+  if (modified > 0) {
+    wad.lastSaveModifiedTime = modified;
+    wad.lastPlayedAt = new Date(modified * 1000).toISOString();
+  }
+  wad.lastSaveFileName = String(payload.fileName || wad.lastSaveFileName || '');
+  wad.lastSaveFilePath = String(payload.filePath || wad.lastSaveFilePath || '');
+}
+
 async function refreshLatestSaveFromFolder(wadId, runId) {
   const wad = state.app.wads.find((entry) => entry.id === wadId);
   if (!wad) return;
@@ -2098,6 +2142,7 @@ async function refreshLatestSaveFromFolder(wadId, runId) {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'Local server refresh failed.');
+    recordLatestSaveInfo(wad, payload);
 
     const levels = payload?.statistics?.levels || payload?.levels;
     if (!Array.isArray(levels)) throw new Error('The local server did not return statistics.levels[].');
@@ -2142,7 +2187,7 @@ async function loadCompanionTxtPreview(wadId) {
     const response = await fetch('/api/read-companion-txt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wadPath: wad.pwadPath, metadataFolder }),
+      body: JSON.stringify({ wadPath: wad.pwadPath, metadataFolder, txtPath: wad.txtMetadataFile || "" }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'TXT preview failed.');
@@ -2800,6 +2845,93 @@ function formatPercent(value) {
 function renderLibraryFilterButton(value, label) {
   return `<button class="filter-pill ${state.libraryFilter === value ? 'active' : ''}" onclick="window.appActions.setLibraryFilter('${value}')">${label}</button>`;
 }
+function getLibrarySortLabel(key) {
+  return LIBRARY_SORT_OPTIONS.find((option) => option.key === key)?.label || 'Alphabetical';
+}
+
+function renderLibrarySortControls() {
+  const options = LIBRARY_SORT_OPTIONS.map((option) => `
+    <option value="${option.key}" ${state.librarySortKey === option.key ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('');
+  const isAsc = state.librarySortDirection !== 'desc';
+  return `
+  <div class="library-sort-controls">
+    <label class="sort-select-label" for="librarySortSelect">Sort library</label>
+    <select id="librarySortSelect" class="sort-select" onchange="window.appActions.setLibrarySortKey(this.value)" title="Choose how WAD cards are sorted. Folders always stay first.">
+      ${options}
+    </select>
+    <button type="button" class="sort-direction-button" onclick="window.appActions.toggleLibrarySortDirection()" title="Toggle ascending / descending">
+      <span class="sort-direction-icon">${isAsc ? '⬆️' : '⬇️'}</span>
+      <span>${isAsc ? 'Ascending' : 'Descending'}</span>
+    </button>
+  </div>`;
+}
+
+function sortLibraryFolders(folders) {
+  return [...folders].sort((a, b) => compareText(a?.name || '', b?.name || ''));
+}
+
+function sortLibraryWads(wads) {
+  const key = LIBRARY_SORT_OPTIONS.some((option) => option.key === state.librarySortKey) ? state.librarySortKey : 'title';
+  const direction = state.librarySortDirection === 'desc' ? -1 : 1;
+  return [...wads].sort((a, b) => {
+    const primary = compareLibrarySortValue(a, b, key);
+    if (primary !== 0) return primary * direction;
+    return compareText(a?.title || '', b?.title || '');
+  });
+}
+
+function compareLibrarySortValue(a, b, key) {
+  if (['title', 'author', 'iwad'].includes(key)) {
+    return compareText(getLibrarySortValue(a, key), getLibrarySortValue(b, key));
+  }
+  return compareNumber(getLibrarySortValue(a, key), getLibrarySortValue(b, key));
+}
+
+function getLibrarySortValue(wad, key) {
+  const latestRun = getLatestRun(wad);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  switch (key) {
+    case 'lastPlayed': return getLastPlayedTimestamp(wad);
+    case 'dateAdded': return Date.parse(wad?.createdAt || '') || 0;
+    case 'completion': return Number(summary.progressPercent) || 0;
+    case 'mapCount': return Number(wad?.totalMaps) || 0;
+    case 'playState': return playStateSortRank(wad?.playState || 'plan');
+    case 'author': return wad?.author || '';
+    case 'iwad': return wad?.iwad || '';
+    case 'updated': return Date.parse(wad?.updatedAt || wad?.createdAt || '') || 0;
+    case 'title':
+    default: return wad?.title || '';
+  }
+}
+
+function getLastPlayedTimestamp(wad) {
+  const savedModified = Number(wad?.lastSaveModifiedTime) || 0;
+  if (savedModified > 0) return savedModified * 1000;
+  const latestRun = getLatestRun(wad);
+  const maps = Array.isArray(latestRun?.maps) ? latestRun.maps : [];
+  return maps.reduce((latest, map) => {
+    if (isUnplayedPlaceholderMap(map)) return latest;
+    const parsed = Date.parse(map?.updatedAt || map?.createdAt || '');
+    return Number.isFinite(parsed) ? Math.max(latest, parsed) : latest;
+  }, 0);
+}
+
+function playStateSortRank(value) {
+  const ranks = { current: 0, plan: 1, hold: 2, completed: 3, dropped: 4 };
+  return Object.prototype.hasOwnProperty.call(ranks, value) ? ranks[value] : 99;
+}
+
+function compareText(a, b) {
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function compareNumber(a, b) {
+  const left = Number(a) || 0;
+  const right = Number(b) || 0;
+  return left === right ? 0 : left < right ? -1 : 1;
+}
+
 function renderLibraryViewControls() {
   const densityLabel = state.libraryViewMode === 'compact' ? 'Row density' : 'Card width';
   const densityValue = state.libraryViewMode === 'compact'
@@ -2820,6 +2952,16 @@ function renderLibraryViewControls() {
 function getLibraryDensityScale() {
   const clamped = Math.min(900, Math.max(520, Number(state.libraryDensity) || 680));
   return (900 - clamped) / 380 * 0.45 + 0.78;
+}
+
+function formatLibraryDate(timestamp) {
+  const ms = Number(timestamp) || 0;
+  if (!ms) return 'Never';
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch (_) {
+    return 'Never';
+  }
 }
 
 function renderLibraryWadCard(wad) {
@@ -2860,7 +3002,7 @@ function renderLibraryWadCard(wad) {
             <span class="medal-chip silver">🥈 ${summary.medals.silver}</span>
             <span class="medal-chip bronze">🥉 ${summary.medals.bronze}</span>
           </div>
-          <div class="card-meta"><span>Total deaths ${summary.totalDeaths}</span><span>Total time ${formatTics(summary.totalTimeTics)}</span><span>${escapeHtml(wad.sourcePort || 'Port not set')}</span><span>${escapeHtml(latestRun?.difficulty || 'UV')}</span></div>
+          <div class="card-meta"><span>Total deaths ${summary.totalDeaths}</span><span>Total time ${formatTics(summary.totalTimeTics)}</span><span>Last played ${formatLibraryDate(getLastPlayedTimestamp(wad))}</span><span>${escapeHtml(wad.sourcePort || 'Port not set')}</span><span>${escapeHtml(latestRun?.difficulty || 'UV')}</span></div>
           <div class="section-bar">
             <div class="tag-row"><span class="tag-chip">Latest run: ${escapeHtml(latestRun?.name || 'None')}</span></div>
             ${renderWadLibraryActions(wad)}
@@ -2891,6 +3033,7 @@ function renderCompactWadRow(wad) {
           <span>🥉 ${summary.medals.bronze}</span>
           <span>Deaths ${summary.totalDeaths}</span>
           <span>${formatTics(summary.totalTimeTics)}</span>
+          <span>Last ${formatLibraryDate(getLastPlayedTimestamp(wad))}</span>
         </div>
       </div>
       <div class="compact-wad-subline">
@@ -3030,7 +3173,7 @@ async function showLibraryTxtInfo(wadId) {
     const response = await fetch('/api/read-companion-txt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wadPath: wad.pwadPath, metadataFolder }),
+      body: JSON.stringify({ wadPath: wad.pwadPath, metadataFolder, txtPath: wad.txtMetadataFile || "" }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'TXT preview failed.');
@@ -3468,6 +3611,8 @@ function normalizeImportedAppState(value) {
 function normalizeImportedSettings(settings) {
   const mode = settings?.libraryViewMode === 'compact' ? 'compact' : 'card';
   const density = Math.min(900, Math.max(520, Number(settings?.libraryDensity) || 680));
+  const sortKey = LIBRARY_SORT_OPTIONS.some((option) => option.key === settings?.librarySortKey) ? settings.librarySortKey : 'title';
+  const sortDirection = settings?.librarySortDirection === 'desc' ? 'desc' : 'asc';
   const boolSetting = (key, fallback = false) => {
     const value = settings?.[key];
     if (value === true || value === 'true' || value === 1 || value === '1' || value === 'on') return true;
@@ -3480,6 +3625,8 @@ function normalizeImportedSettings(settings) {
   return {
     libraryViewMode: mode,
     libraryDensity: density,
+    librarySortKey: sortKey,
+    librarySortDirection: sortDirection,
     defaultRootSaveFolder: String(settings?.defaultRootSaveFolder || '').trim(),
     defaultPwadPath: String(settings?.defaultPwadPath || '').trim(),
     defaultMetadataFolder: String(settings?.defaultMetadataFolder || '').trim(),
@@ -3518,6 +3665,8 @@ function applyAppSettingsToUiState() {
   const settings = normalizeImportedSettings(state.app?.settings || {});
   state.libraryViewMode = settings.libraryViewMode;
   state.libraryDensity = settings.libraryDensity;
+  state.librarySortKey = settings.librarySortKey;
+  state.librarySortDirection = settings.librarySortDirection;
   state.app.settings = settings;
 }
 
@@ -3527,6 +3676,8 @@ function persistLibraryViewSettings() {
     ...(state.app.settings || {}),
     libraryViewMode: state.libraryViewMode,
     libraryDensity: state.libraryDensity,
+    librarySortKey: state.librarySortKey,
+    librarySortDirection: state.librarySortDirection,
   });
   saveState();
 }
@@ -3558,6 +3709,10 @@ function normalizeImportedWad(wad) {
     titlePicFileName: typeof wad?.titlePicFileName === 'string' ? wad.titlePicFileName : '',
     titlePicPath: typeof wad?.titlePicPath === 'string' ? wad.titlePicPath : '',
     updatedAt: typeof wad?.updatedAt === 'string' ? wad.updatedAt : '',
+    lastSaveFileName: typeof wad?.lastSaveFileName === 'string' ? wad.lastSaveFileName : '',
+    lastSaveFilePath: typeof wad?.lastSaveFilePath === 'string' ? wad.lastSaveFilePath : '',
+    lastSaveModifiedTime: Number(wad?.lastSaveModifiedTime) || 0,
+    lastPlayedAt: typeof wad?.lastPlayedAt === 'string' ? wad.lastPlayedAt : '',
     folderId: normalizeFolderId(wad?.folderId),
     createdAt: wad?.createdAt || new Date().toISOString(),
     runs: Array.isArray(wad?.runs) && wad.runs.length ? wad.runs.map(normalizeImportedRun) : [createRun('Default Run')],
@@ -4006,6 +4161,16 @@ window.appActions = {
   associateWadFile,
   extractTitlepicFromAssociatedWad,
   setLibraryFilter: (value) => { state.libraryFilter = value; render(); },
+  setLibrarySortKey: (value) => {
+    state.librarySortKey = LIBRARY_SORT_OPTIONS.some((option) => option.key === value) ? value : 'title';
+    persistLibraryViewSettings();
+    render();
+  },
+  toggleLibrarySortDirection: () => {
+    state.librarySortDirection = state.librarySortDirection === 'desc' ? 'asc' : 'desc';
+    persistLibraryViewSettings();
+    render();
+  },
   setLibraryViewMode: (value) => {
     state.libraryViewMode = value === 'compact' ? 'compact' : 'card';
     persistLibraryViewSettings();
@@ -4016,6 +4181,8 @@ window.appActions = {
     if (state.app?.settings) {
       state.app.settings.libraryDensity = state.libraryDensity;
       state.app.settings.libraryViewMode = state.libraryViewMode;
+      state.app.settings.librarySortKey = state.librarySortKey;
+      state.app.settings.librarySortDirection = state.librarySortDirection;
     }
     render();
   },

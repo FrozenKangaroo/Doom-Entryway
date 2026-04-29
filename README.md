@@ -1,4 +1,4 @@
-# Doom Run Tracker 1.1.0
+# Doom Run Tracker 1.2.0
 
 Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
@@ -65,6 +65,21 @@ Refresh All now reports only changes since the previous Refresh All run. Unchang
 
 Companion TXT parsing now reads explicit map names and map authors only from dedicated Levels/Maps sections. This prevents Music, Credits, and Contributor Commentary sections from being mistaken for WAD titles or map names. TNT2-style lines such as `- MAP01: "Obituary" -------- mouldy / Luisinho` now import as the map title plus author instead of accidentally pulling soundtrack titles or commentary text.
 
+
+
+## v1.2.0 Refresh All noise cleanup
+
+- Missing companion TXT files are now treated as optional, not as Refresh All errors or warnings. This keeps official IWADs, official expansions, and non-/idgames WADs from cluttering the results when no TXT exists.
+- If a stale companion TXT path was previously stored but the file is gone, Refresh All now reports one cleanup entry and removes the stale link.
+- Missing latest `.zds` files are treated as unplayed WADs and are silently skipped during Refresh All instead of appearing as a long error list.
+
+## v1.2.0 Reliability polish and quick-info fixes
+
+- Refresh All results now only list actual changes, warnings, errors, missing files, or moved files since the previous Refresh All.
+- New WAD creation preserves companion TXT paths detected during metadata extraction, so the Library Show TXT button appears immediately when a TXT exists.
+- Companion TXT preview prefers the stored TXT path and falls back to exact/recursive companion matching under the metadata folder.
+- File checking updates moved WAD/PK3 and companion TXT paths, queues WebDAV remote moves/deletes, and avoids redownloading old flat metadata TXT files after files are organised into subfolders.
+- Added clearer status text for metadata extraction and Refresh All change reports.
 
 ## v1.1.0 Library quick-info popups
 
