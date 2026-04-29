@@ -1,4 +1,12 @@
-# Doom Run Tracker 1.2.0
+# Doom Run Tracker 1.2.4
+
+## v1.2.1 Library quick filters
+- Click a WAD card play state to filter to that state.
+- Click IWAD, type, author, source port, or latest-run difficulty on a library card to apply that filter.
+- Click Avg Kills, Avg Items, or Avg Secrets chips to sort by that metric.
+- Added active quick-filter chips with one-click clearing.
+- README and About version text updated to 1.2.1.
+
 
 Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
@@ -85,3 +93,15 @@ Companion TXT parsing now reads explicit map names and map authors only from ded
 
 - The library progress count is now clickable and opens a popup with every map name, map author, and the latest run results.
 - WAD cards with a detected companion TXT now show a **Show TXT** button so the WAD text file can be read without opening the card.
+
+## v1.2.4 Custom tags
+
+- Add comma-separated custom tags to WAD entries.
+- Show a compact tag preview on library cards with a +x popup for extra tags.
+- Click any tag to quick-filter the library.
+- Live search now matches tags.
+
+## v1.2.2 Clickable titlepics
+
+- Clickable titlepics in the Library and WAD detail views.
+- Titlepics now open in the same full-size popup style used by screenshots.

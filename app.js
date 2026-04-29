@@ -1,4 +1,4 @@
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.4";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -6,6 +6,12 @@ const LIBRARY_SORT_OPTIONS = [
   { key: 'lastPlayed', label: 'Last played', hint: 'Newest known .zds modified date' },
   { key: 'dateAdded', label: 'Date added', hint: 'WAD card creation date' },
   { key: 'completion', label: 'Completion %', hint: 'Latest run maps complete / total maps' },
+  { key: 'avgKills', label: 'Average kills %', hint: 'Latest run average kill percentage' },
+  { key: 'avgItems', label: 'Average items %', hint: 'Latest run average item percentage' },
+  { key: 'avgSecrets', label: 'Average secrets %', hint: 'Latest run average secret percentage' },
+  { key: 'goldMedals', label: 'Gold medals', hint: 'Latest run full-clear medal count' },
+  { key: 'totalTime', label: 'Total time', hint: 'Latest run total level time' },
+  { key: 'deaths', label: 'Total deaths', hint: 'Latest run death count' },
   { key: 'mapCount', label: 'Map count', hint: 'Total map slots' },
   { key: 'playState', label: 'Play state', hint: 'Plan, current, hold, dropped, completed' },
   { key: 'author', label: 'Author', hint: 'WAD author name' },
@@ -21,6 +27,7 @@ const state = {
   alerts: [],
   currentMapContext: null,
   libraryFilter: 'all',
+  libraryQuickFilters: {},
   librarySearch: '',
   libraryViewMode: 'card',
   libraryDensity: 680,
@@ -101,6 +108,7 @@ function wireEvents() {
                            iwadPath: getAppSetting('defaultIwadPath'),
                            totalMaps: Math.max(1, Number(formData.get('totalMaps')) || metadata?.totalMaps || 1),
                            notes: String(formData.get('notes') || '').trim(),
+                           tags: parseTags(formData.get('tags')),
                            playState: String(formData.get('playState') || 'plan'),
                            titlePicDataUrl: metadata?.titlePicDataUrl || '',
                            titlePicFileName: metadata?.titlePicFileName || '',
@@ -141,6 +149,7 @@ function wireEvents() {
     wad.type = String(formData.get('type') || 'megawad');
     wad.iwad = String(formData.get('iwad') || '').trim();
     wad.notes = String(formData.get('notes') || '').trim();
+    wad.tags = parseTags(formData.get('tags'));
     wad.excludeFromRefreshAll = formData.get('excludeFromRefreshAll') === 'on';
     wad.updatedAt = new Date().toISOString();
 
@@ -519,7 +528,8 @@ function renderLibrary() {
     ? folderScopeWads
     : folderScopeWads.filter((wad) => (wad.playState || 'plan') === state.libraryFilter);
 
-  const filteredWads = stateFilteredWads.filter((wad) => matchesLibrarySearch(wad, state.librarySearch));
+  const quickFilteredWads = stateFilteredWads.filter((wad) => matchesLibraryQuickFilters(wad));
+  const filteredWads = quickFilteredWads.filter((wad) => matchesLibrarySearch(wad, state.librarySearch));
   const childFolders = hasSearch ? [] : getChildFolders(state.currentFolderId);
   const sortedFolders = sortLibraryFolders(childFolders);
   const sortedWads = sortLibraryWads(filteredWads);
@@ -585,16 +595,17 @@ function renderLibrary() {
   </div>
   <div class="library-search-row">
   <label class="library-search-label" for="librarySearchInput">Live search</label>
-  <input id="librarySearchInput" class="library-search-input" type="search" placeholder="Search WAD title, WAD author, map name, or map author…" value="${escapeHtml(state.librarySearch)}" oninput="window.appActions.setLibrarySearch(this.value)" />
+  <input id="librarySearchInput" class="library-search-input" type="search" placeholder="Search title, author, map name, map author, or tag…" value="${escapeHtml(state.librarySearch)}" oninput="window.appActions.setLibrarySearch(this.value)" />
   ${hasSearch ? `<button class="ghost-button" onclick="window.appActions.clearLibrarySearch()">Clear</button>` : ''}
   </div>
+  ${renderActiveLibraryQuickFilters()}
   ${renderLibraryViewControls()}
   ${renderLibrarySortControls()}
   <p class="subtle library-search-hint">Folders stay pinned first. Showing ${sortedWads.length} WAD card${sortedWads.length === 1 ? '' : 's'} sorted by ${escapeHtml(getLibrarySortLabel(state.librarySortKey))} (${state.librarySortDirection === 'asc' ? 'ascending' : 'descending'}).</p>
-  ${hasSearch ? `<p class="subtle library-search-hint">Search ignores folder scope. Showing ${filteredWads.length} of ${stateFilteredWads.length} entries for “${escapeHtml(state.librarySearch.trim())}”.</p>` : ''}
+  ${hasSearch ? `<p class="subtle library-search-hint">Search ignores folder scope. Showing ${filteredWads.length} of ${quickFilteredWads.length} entries for “${escapeHtml(state.librarySearch.trim())}”.</p>` : ''}
   </section>
   ${folderCards ? `<div class="folder-grid">${folderCards}</div>` : ''}
-  ${filteredWads.length ? `<div class="${wadListClass}" style="${densityStyle}">${wadEntries}</div>` : `<div class="empty-state"><div class="empty-icon">📁</div><h3>No WADs match ${hasSearch ? 'this search' : 'this folder/filter'}</h3><p>${hasSearch ? 'Try a different WAD title, WAD author, map name, or map author.' : 'Create a folder, move cards here, or add a new entry.'}</p></div>`}
+  ${filteredWads.length ? `<div class="${wadListClass}" style="${densityStyle}">${wadEntries}</div>` : `<div class="empty-state"><div class="empty-icon">📁</div><h3>No WADs match ${hasSearch ? 'this search' : 'this folder/filter'}</h3><p>${hasSearch ? 'Try a different title, author, map name, map author, or tag.' : 'Create a folder, move cards here, or add a new entry.'}</p></div>`}
   </div>
   `;
 }
@@ -647,7 +658,7 @@ function renderWadDetail() {
   <div class="detail-head">
   <div class="detail-head-main">
   <div class="titlepic-shell">
-  ${getTitlePicSrc(wad) ? `<img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic" class="titlepic-preview" />` : `<div class="titlepic-placeholder">TITLEPIC</div>`}
+  ${getTitlePicSrc(wad) ? `<button type="button" class="titlepic-open-button" onclick="window.appActions.openTitlepic('${escapeJsString(getTitlePicSrc(wad))}', '${escapeJsString(wad.title || 'TITLEPIC')}')" title="Open titlepic for ${escapeHtml(wad.title || 'this WAD')}"><img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic" class="titlepic-preview" /></button>` : `<div class="titlepic-placeholder">TITLEPIC</div>`}
   </div>
   <div>
   <h3>${escapeHtml(wad.title)}</h3>
@@ -699,6 +710,10 @@ function renderWadDetail() {
   <div class="kpi-card"><div class="label">Average Secret %</div><div class="value">${formatPercent(summary.avgSecretPercent)}</div></div>
   <div class="kpi-card"><div class="label">Total Deaths</div><div class="value">${summary.totalDeaths}</div></div>
   <div class="kpi-card"><div class="label">Total Time</div><div class="value">${formatTics(summary.totalTimeTics)}</div></div>
+  <div class="kpi-card"><div class="label">Demons Slain</div><div class="value">${formatInteger(summary.totalKills)}</div></div>
+  <div class="kpi-card"><div class="label">Items Collected</div><div class="value">${formatInteger(summary.totalItems)}</div></div>
+  <div class="kpi-card"><div class="label">Secrets Found</div><div class="value">${formatInteger(summary.totalSecrets)}</div></div>
+  <div class="kpi-card"><div class="label">Average Kills / Min</div><div class="value">${formatNumber(summary.averageKillsPerMinute, 2)}</div></div>
   </div>
 
   <div class="kpi-grid" style="margin-top:0.85rem;">
@@ -1100,6 +1115,17 @@ function openScreenshotPopup(filePath, fileName = 'Screenshot') {
   dialog.showModal();
 }
 
+function openTitlepicPopup(src, wadTitle = 'TITLEPIC') {
+  const dialog = document.getElementById('screenshotDialog');
+  const img = document.getElementById('screenshotDialogImage');
+  const title = document.getElementById('screenshotDialogTitle');
+  if (!dialog || !img || !title || !src) return;
+  title.textContent = (wadTitle || 'WAD') + ' TITLEPIC';
+  img.src = src;
+  img.alt = (wadTitle || 'WAD') + ' TITLEPIC';
+  dialog.showModal();
+}
+
 function escapeJsString(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
 }
@@ -1116,6 +1142,8 @@ function renderStats() {
     secret: average(playedMapEntries.map(({ map }) => calcPercent(map.secretcount, map.totalsecrets))),
   };
 
+  const totals = computeMapCollectionTotals(playedMapEntries.map(({ map }) => map));
+
   const medalTotals = mapEntries.reduce((acc, entry) => {
     const medal = getMedal(entry.map).tier;
     acc[medal] += 1;
@@ -1130,6 +1158,11 @@ function renderStats() {
   <div class="kpi-card"><div class="label">Tracked WADs</div><div class="value">${state.app.wads.length}</div></div>
   <div class="kpi-card"><div class="label">Tracked Runs</div><div class="value">${allRuns.length}</div></div>
   <div class="kpi-card"><div class="label">Logged Maps</div><div class="value">${mapEntries.length}</div></div>
+  <div class="kpi-card"><div class="label">Total Tracked Time</div><div class="value">${formatTics(totals.totalTimeTics)}</div></div>
+  <div class="kpi-card"><div class="label">Total Demons Slain</div><div class="value">${formatInteger(totals.totalKills)}</div></div>
+  <div class="kpi-card"><div class="label">Total Items Collected</div><div class="value">${formatInteger(totals.totalItems)}</div></div>
+  <div class="kpi-card"><div class="label">Total Secrets Found</div><div class="value">${formatInteger(totals.totalSecrets)}</div></div>
+  <div class="kpi-card"><div class="label">Average Kills / Min</div><div class="value">${formatNumber(totals.averageKillsPerMinute, 2)}</div></div>
   <div class="kpi-card"><div class="label">Average Kill %</div><div class="value">${formatPercent(averages.kill)}</div></div>
   <div class="kpi-card"><div class="label">Average Item %</div><div class="value">${formatPercent(averages.item)}</div></div>
   <div class="kpi-card"><div class="label">Average Secret %</div><div class="value">${formatPercent(averages.secret)}</div></div>
@@ -1354,6 +1387,8 @@ function renderAbout() {
         <li>Use virtual nested folders to organise the library, with clickable breadcrumbs.</li>
         <li>Switch between resizable card view and compact directory view.</li>
         <li>Filter and manage WAD states, including Plan to Play, Currently Playing, On Hold, Dropped, and Completed.</li>
+        <li>Click library card fields to quick-filter by state, IWAD, type, author, source port, difficulty, or custom tag; click average stat chips to sort by kills, items, or secrets.</li>
+        <li>Add comma-separated custom tags to WAD entries, show a compact tag preview on cards, open a +x tag popup, and search/filter by tag.</li>
         <li>Automatically change dormant WADs to Currently Playing when new played maps are detected, and Completed when the final unplayed map is played.</li>
         <li>Exclude selected WADs from Refresh All.</li>
       </ul>
@@ -2670,6 +2705,7 @@ function computeRunSummary(run, totalMaps) {
   const killPercents = playedMaps.map((map) => calcPercent(map.killcount, map.totalkills));
   const itemPercents = playedMaps.map((map) => calcPercent(map.itemcount, map.totalitems));
   const secretPercents = playedMaps.map((map) => calcPercent(map.secretcount, map.totalsecrets));
+  const totals = computeMapCollectionTotals(playedMaps);
   const medals = maps.reduce((acc, map) => {
     const medal = getMedal(map).tier;
     acc[medal] += 1;
@@ -2680,9 +2716,13 @@ function computeRunSummary(run, totalMaps) {
     avgKillPercent: average(killPercents),
     avgItemPercent: average(itemPercents),
     avgSecretPercent: average(secretPercents),
-    weightedKillPercent: calcPercent(sum(playedMaps.map((m) => m.killcount)), sum(playedMaps.map((m) => m.totalkills))),
+    weightedKillPercent: calcPercent(totals.totalKills, sum(playedMaps.map((m) => m.totalkills))),
     totalDeaths: sum(playedMaps.map((m) => Number(m.deaths) || 0)),
-    totalTimeTics: sum(playedMaps.map((m) => Number(m.leveltime) || 0)),
+    totalTimeTics: totals.totalTimeTics,
+    totalKills: totals.totalKills,
+    totalItems: totals.totalItems,
+    totalSecrets: totals.totalSecrets,
+    averageKillsPerMinute: totals.averageKillsPerMinute,
     medals,
     completedMaps: playedMaps.length,
     progressPercent: totalMaps ? Math.min(100, (playedMaps.length / totalMaps) * 100) : 0,
@@ -2700,6 +2740,10 @@ function createEmptySummary(totalMaps) {
     weightedKillPercent: 0,
     totalDeaths: 0,
     totalTimeTics: 0,
+    totalKills: 0,
+    totalItems: 0,
+    totalSecrets: 0,
+    averageKillsPerMinute: 0,
     medals: { gold: 0, silver: 0, bronze: 0, none: 0, unplayed: 0 },
     completedMaps: 0,
     progressPercent: 0,
@@ -2821,6 +2865,22 @@ function sortRunMaps(run) {
   run.maps.sort(compareMapSlots);
 }
 
+function computeMapCollectionTotals(maps) {
+  const safeMaps = Array.isArray(maps) ? maps : [];
+  const totalKills = sum(safeMaps.map((map) => map.killcount));
+  const totalItems = sum(safeMaps.map((map) => map.itemcount));
+  const totalSecrets = sum(safeMaps.map((map) => map.secretcount));
+  const totalTimeTics = sum(safeMaps.map((map) => map.leveltime));
+  const totalMinutes = totalTimeTics > 0 ? totalTimeTics / 35 / 60 : 0;
+  return {
+    totalKills,
+    totalItems,
+    totalSecrets,
+    totalTimeTics,
+    averageKillsPerMinute: totalMinutes > 0 ? totalKills / totalMinutes : 0,
+  };
+}
+
 function calcPercent(found, total) {
   const normalizedTotal = Number(total) || 0;
   const normalizedFound = Number(found) || 0;
@@ -2842,8 +2902,135 @@ function formatPercent(value) {
   return `${Math.round(value * 10) / 10}%`;
 }
 
+function formatInteger(value) {
+  return new Intl.NumberFormat().format(Number(value) || 0);
+}
+
+function formatNumber(value, digits = 1) {
+  const normalized = Number(value) || 0;
+  return normalized.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 function renderLibraryFilterButton(value, label) {
   return `<button class="filter-pill ${state.libraryFilter === value ? 'active' : ''}" onclick="window.appActions.setLibraryFilter('${value}')">${label}</button>`;
+}
+
+function getLibraryQuickFilters() {
+  return state.libraryQuickFilters && typeof state.libraryQuickFilters === 'object' ? state.libraryQuickFilters : {};
+}
+
+function setLibraryQuickFilter(key, value) {
+  const allowed = ['playState', 'iwad', 'type', 'difficulty', 'author', 'sourcePort', 'tag'];
+  if (!allowed.includes(key)) return;
+  state.libraryQuickFilters = getLibraryQuickFilters();
+  const normalized = String(value || '').trim();
+  if (!normalized) delete state.libraryQuickFilters[key];
+  else state.libraryQuickFilters[key] = normalized;
+  render();
+}
+
+function clearLibraryQuickFilter(key) {
+  state.libraryQuickFilters = getLibraryQuickFilters();
+  delete state.libraryQuickFilters[key];
+  render();
+}
+
+function clearAllLibraryQuickFilters() {
+  state.libraryQuickFilters = {};
+  state.libraryFilter = 'all';
+  render();
+}
+
+function renderActiveLibraryQuickFilters() {
+  const filters = getLibraryQuickFilters();
+  const chips = [];
+  if (state.libraryFilter !== 'all') chips.push({ label: 'State', value: playStateLabel(state.libraryFilter), clear: "window.appActions.setLibraryFilter('all')" });
+  for (const [key, value] of Object.entries(filters)) {
+    const label = ({ playState: 'State', iwad: 'IWAD', type: 'Type', difficulty: 'Difficulty', author: 'Author', sourcePort: 'Port', tag: 'Tag' })[key] || key;
+    const display = key === 'playState' ? playStateLabel(value) : value;
+    chips.push({ label, value: display, clear: `window.appActions.clearLibraryQuickFilter('${escapeJsString(key)}')` });
+  }
+  if (!chips.length) return '';
+  return `<div class="active-filter-row">
+    <span class="subtle">Active quick filters:</span>
+    ${chips.map((chip) => `<button type="button" class="filter-pill active" onclick="${chip.clear}" title="Clear ${escapeHtml(chip.label)} filter">${escapeHtml(chip.label)}: ${escapeHtml(chip.value)} ✕</button>`).join('')}
+    <button type="button" class="ghost-button" onclick="window.appActions.clearAllLibraryQuickFilters()">Clear all</button>
+  </div>`;
+}
+
+function renderQuickFilterButton(key, value, label, cssClass = 'inline-link-button') {
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue) return `<span>${escapeHtml(label || 'Not set')}</span>`;
+  const cleanLabel = String(label || cleanValue).trim();
+  return `<button type="button" class="${cssClass}" onclick="window.appActions.setLibraryQuickFilter('${escapeJsString(key)}', '${escapeJsString(cleanValue)}')" title="Filter library by ${escapeHtml(cleanLabel)}">${escapeHtml(cleanLabel)}</button>`;
+}
+
+function parseTags(value) {
+  const raw = Array.isArray(value) ? value.join(',') : String(value || '');
+  const seen = new Set();
+  return raw.split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .filter((tag) => {
+      const key = normalizeSearchText(tag);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getWadTags(wad) {
+  return parseTags(wad?.tags || []);
+}
+
+function renderWadTagButton(tag, cssClass = 'tag-chip tag-chip-button') {
+  const clean = String(tag || '').trim();
+  if (!clean) return '';
+  return `<button type="button" class="${cssClass}" onclick="window.appActions.setLibraryQuickFilter('tag', '${escapeJsString(clean)}')" title="Filter library by tag: ${escapeHtml(clean)}">#${escapeHtml(clean)}</button>`;
+}
+
+function renderWadTagPreview(wad, limit = 3) {
+  const tags = getWadTags(wad);
+  if (!tags.length) return '';
+  const shown = tags.slice(0, limit).map((tag) => renderWadTagButton(tag)).join('');
+  const remaining = tags.length - limit;
+  const more = remaining > 0
+    ? `<button type="button" class="tag-chip tag-chip-button" onclick="window.appActions.showAllWadTags('${escapeJsString(wad.id)}')" title="Show all tags for ${escapeHtml(wad.title || 'this WAD')}">+${remaining}</button>`
+    : '';
+  return `${shown}${more}`;
+}
+
+function showAllWadTags(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  if (!wad) return;
+  const tags = getWadTags(wad);
+  let dialog = document.getElementById('wadTagsDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'wadTagsDialog';
+    dialog.className = 'modal';
+    document.body.appendChild(dialog);
+  }
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-card wad-tags-card">
+      <div class="modal-head">
+        <div>
+          <h3>${escapeHtml(wad.title)} — Tags</h3>
+          <p class="muted">Click a tag to filter the library.</p>
+        </div>
+        <button type="submit" class="ghost-button">✕</button>
+      </div>
+      <div class="tag-row tag-popup-row">${tags.length ? tags.map((tag) => renderWadTagButton(tag)).join('') : '<span class="muted">No tags set.</span>'}</div>
+      <div class="modal-actions"><button type="submit" class="primary-button">Close</button></div>
+    </form>`;
+  dialog.showModal();
+}
+function renderMetricSortButton(sortKey, label, value) {
+  const active = state.librarySortKey === sortKey ? ' active' : '';
+  return `<button type="button" class="metric-chip metric-chip-button${active}" onclick="window.appActions.sortLibraryByMetric('${escapeJsString(sortKey)}')" title="Sort library by ${escapeHtml(label)}">${escapeHtml(label)} ${escapeHtml(formatPercent(value))}</button>`;
 }
 function getLibrarySortLabel(key) {
   return LIBRARY_SORT_OPTIONS.find((option) => option.key === key)?.label || 'Alphabetical';
@@ -2895,6 +3082,12 @@ function getLibrarySortValue(wad, key) {
     case 'lastPlayed': return getLastPlayedTimestamp(wad);
     case 'dateAdded': return Date.parse(wad?.createdAt || '') || 0;
     case 'completion': return Number(summary.progressPercent) || 0;
+    case 'avgKills': return Number(summary.avgKillPercent) || 0;
+    case 'avgItems': return Number(summary.avgItemPercent) || 0;
+    case 'avgSecrets': return Number(summary.avgSecretPercent) || 0;
+    case 'goldMedals': return Number(summary.medals?.gold) || 0;
+    case 'totalTime': return Number(summary.totalTimeTics) || 0;
+    case 'deaths': return Number(summary.totalDeaths) || 0;
     case 'mapCount': return Number(wad?.totalMaps) || 0;
     case 'playState': return playStateSortRank(wad?.playState || 'plan');
     case 'author': return wad?.author || '';
@@ -2972,7 +3165,7 @@ function renderLibraryWadCard(wad) {
       <div class="wad-card-media-row">
         <div class="wad-card-thumb-shell">
           ${getTitlePicSrc(wad)
-            ? `<img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic" class="wad-card-thumb" />`
+            ? `<button type="button" class="wad-card-thumb-button" onclick="window.appActions.openTitlepic('${escapeJsString(getTitlePicSrc(wad))}', '${escapeJsString(wad.title || 'TITLEPIC')}')" title="Open titlepic for ${escapeHtml(wad.title || 'this WAD')}"><img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic" class="wad-card-thumb" /></button>`
             : `<div class="wad-card-thumb-placeholder">TITLEPIC</div>`}
         </div>
         <div class="wad-card-main">
@@ -2980,31 +3173,31 @@ function renderLibraryWadCard(wad) {
             <div>
               <h3 class="card-title">${escapeHtml(wad.title)}</h3>
               <div class="card-meta">
-                <span>${capitalize(wad.type)}</span>
-                <span>${escapeHtml(wad.author || 'Unknown author')}</span>
-                <span>${escapeHtml(wad.iwad || 'IWAD not set')}</span>
+                <span>${renderQuickFilterButton('type', wad.type, capitalize(wad.type), 'inline-link-button meta-filter-link')}</span>
+                <span>${renderQuickFilterButton('author', wad.author || '', wad.author || 'Unknown author', 'inline-link-button meta-filter-link')}</span>
+                <span>${renderQuickFilterButton('iwad', wad.iwad || '', wad.iwad || 'IWAD not set', 'inline-link-button meta-filter-link')}</span>
                 <span>Folder: ${escapeHtml(getFolderPathLabel(wad.folderId))}</span>
               </div>
             </div>
-            <span class="status-pill state-${wad.playState || 'plan'}">${playStateLabel(wad.playState || 'plan')}</span>
+            <button type="button" class="status-pill state-${wad.playState || 'plan'} status-pill-button" onclick="window.appActions.setLibraryQuickFilter('playState', '${escapeJsString(wad.playState || 'plan')}')" title="Filter by play state">${playStateLabel(wad.playState || 'plan')}</button>
           </div>
           <div class="progress-row">
             <div class="card-meta"><span>${renderLibraryMapSummaryButton(wad, summary, 'maps complete')}</span><span>${summary.runCount} run${summary.runCount === 1 ? '' : 's'}</span></div>
             <div class="progress-track"><div class="progress-fill" style="width:${summary.progressPercent}%"></div></div>
           </div>
           <div class="metric-chip-row">
-            <span class="metric-chip">Avg Kills ${formatPercent(summary.avgKillPercent)}</span>
-            <span class="metric-chip">Avg Items ${formatPercent(summary.avgItemPercent)}</span>
-            <span class="metric-chip">Avg Secrets ${formatPercent(summary.avgSecretPercent)}</span>
+            ${renderMetricSortButton('avgKills', 'Avg Kills', summary.avgKillPercent)}
+            ${renderMetricSortButton('avgItems', 'Avg Items', summary.avgItemPercent)}
+            ${renderMetricSortButton('avgSecrets', 'Avg Secrets', summary.avgSecretPercent)}
           </div>
           <div class="medal-row">
             <span class="medal-chip gold">🥇 ${summary.medals.gold}</span>
             <span class="medal-chip silver">🥈 ${summary.medals.silver}</span>
             <span class="medal-chip bronze">🥉 ${summary.medals.bronze}</span>
           </div>
-          <div class="card-meta"><span>Total deaths ${summary.totalDeaths}</span><span>Total time ${formatTics(summary.totalTimeTics)}</span><span>Last played ${formatLibraryDate(getLastPlayedTimestamp(wad))}</span><span>${escapeHtml(wad.sourcePort || 'Port not set')}</span><span>${escapeHtml(latestRun?.difficulty || 'UV')}</span></div>
+          <div class="card-meta"><span>Total deaths ${summary.totalDeaths}</span><span>Total time ${formatTics(summary.totalTimeTics)}</span><span>Last played ${formatLibraryDate(getLastPlayedTimestamp(wad))}</span><span>${renderQuickFilterButton('sourcePort', wad.sourcePort || '', wad.sourcePort || 'Port not set', 'inline-link-button meta-filter-link')}</span><span>${renderQuickFilterButton('difficulty', latestRun?.difficulty || 'UV', latestRun?.difficulty || 'UV', 'inline-link-button meta-filter-link')}</span></div>
           <div class="section-bar">
-            <div class="tag-row"><span class="tag-chip">Latest run: ${escapeHtml(latestRun?.name || 'None')}</span></div>
+            <div class="tag-row"><span class="tag-chip">Latest run: ${escapeHtml(latestRun?.name || 'None')}</span>${renderWadTagPreview(wad)}</div>
             ${renderWadLibraryActions(wad)}
           </div>
         </div>
@@ -3021,13 +3214,13 @@ function renderCompactWadRow(wad) {
         <div class="compact-title-block">
           <span class="compact-icon">${hasTitlePic(wad) ? '🖼️' : '📄'}</span>
           <strong class="compact-title">${escapeHtml(wad.title)}</strong>
-          <span class="status-pill state-${wad.playState || 'plan'}">${playStateLabel(wad.playState || 'plan')}</span>
+          <button type="button" class="status-pill state-${wad.playState || 'plan'} status-pill-button" onclick="window.appActions.setLibraryQuickFilter('playState', '${escapeJsString(wad.playState || 'plan')}')" title="Filter by play state">${playStateLabel(wad.playState || 'plan')}</button>
         </div>
         <div class="compact-stat-line">
           <span>${renderLibraryMapSummaryButton(wad, summary, 'maps')}</span>
-          <span>K ${formatPercent(summary.avgKillPercent)}</span>
-          <span>I ${formatPercent(summary.avgItemPercent)}</span>
-          <span>S ${formatPercent(summary.avgSecretPercent)}</span>
+          <span>${renderMetricSortButton('avgKills', 'K', summary.avgKillPercent)}</span>
+          <span>${renderMetricSortButton('avgItems', 'I', summary.avgItemPercent)}</span>
+          <span>${renderMetricSortButton('avgSecrets', 'S', summary.avgSecretPercent)}</span>
           <span>🥇 ${summary.medals.gold}</span>
           <span>🥈 ${summary.medals.silver}</span>
           <span>🥉 ${summary.medals.bronze}</span>
@@ -3038,12 +3231,13 @@ function renderCompactWadRow(wad) {
       </div>
       <div class="compact-wad-subline">
         <div class="compact-meta-line">
-          <span>${capitalize(wad.type)}</span>
-          <span>${escapeHtml(wad.author || 'Unknown author')}</span>
-          <span>${escapeHtml(wad.iwad || 'IWAD not set')}</span>
-          <span>${escapeHtml(wad.sourcePort || 'Port not set')}</span>
-          <span>${escapeHtml(latestRun?.difficulty || 'UV')}</span>
+          <span>${renderQuickFilterButton('type', wad.type, capitalize(wad.type), 'inline-link-button meta-filter-link')}</span>
+          <span>${renderQuickFilterButton('author', wad.author || '', wad.author || 'Unknown author', 'inline-link-button meta-filter-link')}</span>
+          <span>${renderQuickFilterButton('iwad', wad.iwad || '', wad.iwad || 'IWAD not set', 'inline-link-button meta-filter-link')}</span>
+          <span>${renderQuickFilterButton('sourcePort', wad.sourcePort || '', wad.sourcePort || 'Port not set', 'inline-link-button meta-filter-link')}</span>
+          <span>${renderQuickFilterButton('difficulty', latestRun?.difficulty || 'UV', latestRun?.difficulty || 'UV', 'inline-link-button meta-filter-link')}</span>
           <span>${escapeHtml(getFolderPathLabel(wad.folderId))}</span>
+          <span class="compact-tags">${renderWadTagPreview(wad, 2)}</span>
         </div>
         ${renderWadLibraryActions(wad)}
       </div>
@@ -3204,6 +3398,29 @@ function renderWadLibraryActions(wad) {
 }
 
 
+
+function matchesLibraryQuickFilters(wad) {
+  const filters = getLibraryQuickFilters();
+  const latestRun = getLatestRun(wad);
+  for (const [key, rawValue] of Object.entries(filters)) {
+    const value = normalizeSearchText(rawValue);
+    if (!value) continue;
+    if (key === 'playState' && normalizeSearchText(wad.playState || 'plan') !== value) return false;
+    if (key === 'iwad' && normalizeSearchText(wad.iwad || '') !== value) return false;
+    if (key === 'type' && normalizeSearchText(wad.type || '') !== value) return false;
+    if (key === 'author' && normalizeSearchText(wad.author || '') !== value) return false;
+    if (key === 'sourcePort' && normalizeSearchText(wad.sourcePort || '') !== value) return false;
+    if (key === 'tag' && !getWadTags(wad).some((tag) => normalizeSearchText(tag) === value)) return false;
+    if (key === 'difficulty') {
+      const runs = Array.isArray(wad.runs) ? wad.runs : [];
+      const hasMatchingRun = runs.some((run) => normalizeSearchText(run?.difficulty || 'UV') === value)
+        || normalizeSearchText(latestRun?.difficulty || 'UV') === value;
+      if (!hasMatchingRun) return false;
+    }
+  }
+  return true;
+}
+
 function matchesLibrarySearch(wad, rawQuery) {
   const query = normalizeSearchText(rawQuery);
   if (!query) return true;
@@ -3211,6 +3428,7 @@ function matchesLibrarySearch(wad, rawQuery) {
   const haystackParts = [
     wad.title,
     wad.author,
+    ...getWadTags(wad),
     ...(wad.runs || []).flatMap((run) => (run.maps || []).flatMap((map) => [
       map.displayName,
       map.mapAuthor,
@@ -3358,6 +3576,7 @@ function openEditWadDialog(wadId) {
   editWadForm.elements.type.value = wad.type || 'megawad';
   editWadForm.elements.iwad.value = wad.iwad || '';
   editWadForm.elements.notes.value = wad.notes || '';
+  if (editWadForm.elements.tags) editWadForm.elements.tags.value = getWadTags(wad).join(', ');
   if (editWadForm.elements.excludeFromRefreshAll) editWadForm.elements.excludeFromRefreshAll.checked = wad.excludeFromRefreshAll === true;
   editWadDialog.showModal();
 }
@@ -3703,6 +3922,7 @@ function normalizeImportedWad(wad) {
     iwadPath: String(wad?.iwadPath || '').trim(),
     totalMaps: Math.max(1, Number(wad?.totalMaps) || 1),
     notes: String(wad?.notes || '').trim(),
+    tags: parseTags(wad?.tags),
     playState: String(wad?.playState || 'plan'),
     excludeFromRefreshAll: wad?.excludeFromRefreshAll === true || wad?.excludeFromRefreshAll === 'true' || wad?.excludeFromRefreshAll === 1 || wad?.excludeFromRefreshAll === '1',
     titlePicDataUrl: typeof wad?.titlePicDataUrl === 'string' ? wad.titlePicDataUrl : '',
@@ -4156,11 +4376,22 @@ window.appActions = {
   openWad: (wadId) => showWadDetail(wadId),
   showLibraryMapSummary,
   showLibraryTxtInfo,
+  showAllWadTags,
+  openTitlepic: openTitlepicPopup,
   editWad: openEditWadDialog,
   refreshWadMetadata: refreshWadMetadataFromDisk,
   associateWadFile,
   extractTitlepicFromAssociatedWad,
   setLibraryFilter: (value) => { state.libraryFilter = value; render(); },
+  setLibraryQuickFilter,
+  clearLibraryQuickFilter,
+  clearAllLibraryQuickFilters,
+  sortLibraryByMetric: (value) => {
+    state.librarySortKey = LIBRARY_SORT_OPTIONS.some((option) => option.key === value) ? value : 'title';
+    state.librarySortDirection = 'desc';
+    persistLibraryViewSettings();
+    render();
+  },
   setLibrarySortKey: (value) => {
     state.librarySortKey = LIBRARY_SORT_OPTIONS.some((option) => option.key === value) ? value : 'title';
     persistLibraryViewSettings();

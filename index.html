@@ -18,7 +18,7 @@
           <div class="brand-mark">D</div>
           <div>
             <h1>Doom Run Tracker</h1>
-            <p>1.0.2 Release</p>
+            <p>1.2.3 Release</p>
           </div>
         </div>
 
@@ -116,6 +116,11 @@
           <input name="totalMaps" type="number" min="1" value="32" />
         </label>
         <label class="full-width">
+          Tags
+          <input name="tags" placeholder="e.g. official, TeamTNT, vanilla, MBF21" />
+          <span class="field-help">Separate tags with commas. Tags become clickable library filters.</span>
+        </label>
+        <label class="full-width">
           Notes
           <textarea name="notes" rows="3" placeholder="Optional notes"></textarea>
         </label>
@@ -163,6 +168,11 @@
         <label>
           IWAD
           <input name="iwad" placeholder="e.g. Doom II" />
+        </label>
+        <label class="full-width">
+          Tags
+          <input name="tags" placeholder="e.g. official, TeamTNT, vanilla, MBF21" />
+          <span class="field-help">Separate tags with commas. Tags show on library cards and can be used by live search.</span>
         </label>
         <label class="full-width">
           Notes
@@ -341,6 +351,6 @@
     </div>
   </template>
 
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=122"></script>
 </body>
 </html>

@@ -1109,3 +1109,93 @@ code {
 .sort-direction-icon {
   line-height: 1;
 }
+
+/* v1.2.1 library quick filters */
+.active-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0.75rem 0;
+}
+.status-pill-button {
+  border: 1px solid transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.status-pill-button:hover,
+.metric-chip-button:hover,
+.meta-filter-link:hover {
+  filter: brightness(1.15);
+}
+.metric-chip-button {
+  cursor: pointer;
+  color: var(--text);
+}
+.metric-chip-button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.meta-filter-link {
+  color: var(--muted);
+  text-decoration-style: dotted;
+}
+.meta-filter-link:hover {
+  color: var(--accent);
+}
+.compact-stat-line .metric-chip-button {
+  padding: 0.15rem 0.35rem;
+  font-size: inherit;
+}
+
+/* v1.2.2 clickable titlepics */
+.titlepic-open-button,
+.wad-card-thumb-button {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.titlepic-open-button:hover .titlepic-preview,
+.wad-card-thumb-button:hover .wad-card-thumb {
+  filter: brightness(1.08);
+}
+.titlepic-open-button:focus-visible,
+.wad-card-thumb-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
+/* v1.2.3 custom tags */
+.tag-chip-button {
+  color: var(--text);
+  cursor: pointer;
+}
+.tag-chip-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.tag-popup-row {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.035);
+}
+.wad-tags-card {
+  max-width: 640px;
+}
+.compact-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.compact-tags .tag-chip {
+  padding: 0.25rem 0.45rem;
+  font-size: 0.78rem;
+}
