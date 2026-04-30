@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.2";
+const APP_VERSION = "1.5.3";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -4671,7 +4671,7 @@ function showWebdavSyncResults(payload) {
   const summary = payload.summary || {};
   const uploaded = Array.isArray(payload.uploaded) ? payload.uploaded : [];
   const downloaded = Array.isArray(payload.downloaded) ? payload.downloaded : [];
-  const deletedRemote = Array.isArray(payload.deletedRemote) ? payload.deletedRemote : [];
+  const deletedRemote = (Array.isArray(payload.deletedRemote) ? payload.deletedRemote : []).filter((entry) => entry?.deleted !== false);
   const movedRemote = Array.isArray(payload.movedRemote) ? payload.movedRemote : [];
   const skipped = Array.isArray(payload.skipped) ? payload.skipped : [];
   const folders = Array.isArray(payload.folders) ? payload.folders : [];
@@ -4683,7 +4683,25 @@ function showWebdavSyncResults(payload) {
     const extra = entry.reason || entry.error || entry.message || entry.action || '';
     return `<li><code>${remote}</code>${local}${extra ? `<br><span class="field-help">${escapeHtml(extra)}</span>` : ''}</li>`;
   };
-  const list = (items, empty) => items.length ? `<ul class="list-tight sync-results-list">${items.slice(0, 80).map(row).join('')}</ul>${items.length > 80 ? `<p class="field-help">Showing first 80 of ${items.length} entries. Full result is in the browser console.</p>` : ''}` : `<p class="muted">${escapeHtml(empty)}</p>`;
+  const list = (items, empty, limit = 80) => items.length ? `<ul class="list-tight sync-results-list">${items.slice(0, limit).map(row).join('')}</ul>${items.length > limit ? `<p class="field-help">Showing first ${limit} of ${items.length} entries. Full result is in the browser console.</p>` : ''}` : `<p class="muted">${escapeHtml(empty)}</p>`;
+  const skippedSummary = (items) => {
+    if (!items.length) return '<p class="muted">Nothing skipped.</p>';
+    const reasonCounts = {};
+    for (const entry of items) {
+      const reason = String(entry?.reason || entry?.action || 'skipped');
+      reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    }
+    const reasonRows = Object.entries(reasonCounts)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([reason, count]) => `<li><strong>${count}</strong> ${escapeHtml(reason)}</li>`)
+      .join('');
+    const noteworthy = items.filter((entry) => !['hash match', 'unchanged'].includes(String(entry?.reason || '').toLowerCase()));
+    return `
+      <p class="muted">${items.length} skipped / unchanged file${items.length === 1 ? '' : 's'}.</p>
+      <ul class="list-tight sync-results-list">${reasonRows}</ul>
+      ${noteworthy.length ? `<p class="field-help">Non-routine skipped entries:</p>${list(noteworthy, 'No non-routine skipped entries.', 12)}` : '<p class="field-help">Routine hash-match/unchanged files are summarized instead of listed.</p>'}
+    `;
+  };
 
   const dialog = document.createElement('dialog');
   dialog.id = 'syncResultsDialog';
@@ -4714,7 +4732,7 @@ function showWebdavSyncResults(payload) {
         <h4>Deleted remotely</h4>
         ${list(deletedRemote, 'No remote deletes queued.')}
         <h4>Skipped</h4>
-        ${list(skipped, 'Nothing skipped.')}
+        ${skippedSummary(skipped)}
         <h4>Folder / backup actions</h4>
         ${list(folders, 'No folder or backup actions.')}
         <h4>Errors</h4>

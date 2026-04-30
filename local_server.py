@@ -46,7 +46,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -2812,24 +2812,31 @@ def _webdav_delete_tombstones(opener, base_url: str, app: dict) -> tuple[list[di
     remaining = []
     deleted = []
     errors = []
+    changed = False
     for entry in tombstones:
         if not isinstance(entry, dict):
+            changed = True
             continue
         remote = str(entry.get("remote") or "").strip().strip("/")
         if not remote:
+            changed = True
             continue
         try:
             url = base_url.rstrip("/") + "/" + "/".join(quote(part) for part in remote.split("/") if part)
             did_delete = _webdav_delete(opener, url)
-            deleted.append({"action": "remote-deleted", "remote": remote, "deleted": bool(did_delete)})
+            # Only report real remote deletes. If the remote file was already gone,
+            # silently clear the tombstone so optional TXT metadata that never
+            # existed remotely does not keep cluttering Sync Results.
+            if did_delete:
+                deleted.append({"action": "remote-deleted", "remote": remote, "deleted": True})
+            changed = True
         except Exception as exc:
             errors.append({"remote": remote, "error": str(exc)})
             remaining.append(entry)
     settings["webdavDeletedFiles"] = remaining
-    if len(remaining) != len(tombstones):
+    if changed or len(remaining) != len(tombstones):
         _save_database(app)
     return deleted, errors
-
 
 def _append_webdav_delete_tombstone(settings: dict, remote_path: str) -> None:
     remote = str(remote_path or "").strip().strip("/")

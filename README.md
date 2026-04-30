@@ -1,16 +1,13 @@
-# Doom Run Tracker 1.5.2
+# Doom Run Tracker 1.5.3
 
-## v1.5.2 Launcher file discovery and saved loadouts
+## v1.5.3 WebDAV sync result cleanup
 
-Adds full launch configuration for tracked WADs:
+Cleans up the WebDAV sync report:
 
-- Play popup can select global mod files from the Mods folder.
-- Play popup can select WAD-specific files from the Additional Files folder.
-- Additional files default to selected when found, making widescreen patches easy to apply.
-- Each Mods and Additional Files list can be reordered with up/down priority buttons.
-- Overall section order can be changed between Map file, Additional files, and Mod files.
-- Command preview now shows the final `-file` order before launch.
-- Launch backend accepts multiple `-file` entries while keeping death monitoring enabled.
+- Remote TXT tombstones are only shown when an actual remote file was deleted.
+- Missing optional remote TXT files are silently cleared from the deletion queue instead of appearing every sync.
+- Skipped files are summarized by reason instead of listing hundreds of unchanged/hash-matched files.
+- Full sync payload is still logged to the browser console for debugging.
 
 ## v1.2.1 Library quick filters
 - Click a WAD card play state to filter to that state.
