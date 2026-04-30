@@ -46,7 +46,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.5.3"
+APP_VERSION = "1.5.5"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -241,7 +241,8 @@ def _increment_map_death_count(wad_id: str, level_name: str, message: str) -> No
     runs = wad.get("runs") if isinstance(wad.get("runs"), list) else []
     if not runs:
         return
-    run = runs[-1]
+    selected_run_id = str(wad.get("selectedRunId") or "")
+    run = next((entry for entry in runs if str(entry.get("id") or "") == selected_run_id), None) or runs[-1]
     maps = run.get("maps") if isinstance(run.get("maps"), list) else []
     wanted = level_name.upper()
     target = None

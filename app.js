@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.3";
+const APP_VERSION = "1.5.5";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -1041,9 +1041,15 @@ function renderWadDetail() {
   `;
 
   const runSelector = document.getElementById('runSelector');
-  runSelector.addEventListener('change', (event) => {
-    wad.selectedRunId = event.target.value;
-    saveState();
+  runSelector.addEventListener('change', async (event) => {
+    const newRunId = event.target.value;
+    const liveWad = state.app.wads.find((entry) => entry.id === wad.id);
+    if (!liveWad) return;
+    liveWad.selectedRunId = newRunId;
+    liveWad.updatedAt = new Date().toISOString();
+    await saveState();
+    const refreshedWad = state.app.wads.find((entry) => entry.id === wad.id);
+    if (refreshedWad) refreshedWad.selectedRunId = newRunId;
     render();
   });
 
@@ -1132,21 +1138,23 @@ function renderWadDetail() {
     autoDetectSaveFolder(wad.id);
   });
 
-  saveFolderPathButton?.addEventListener('click', () => {
-    wad.saveFolderPath = String(saveFolderPathInput?.value || '').trim();
-    saveState();
-    showAlert('success', wad.saveFolderPath ? 'Save folder saved for this WAD.' : 'Save folder cleared.');
+  saveFolderPathButton?.addEventListener('click', async () => {
+    const liveWad = state.app.wads.find((entry) => entry.id === wad.id);
+    if (!liveWad) return;
+    liveWad.saveFolderPath = String(saveFolderPathInput?.value || '').trim();
+    await saveState();
+    showAlert('success', liveWad.saveFolderPath ? 'Save folder saved for this WAD.' : 'Save folder cleared.');
     render();
   });
 
   refreshLatestSaveButton?.addEventListener('click', () => {
-    refreshLatestSaveFromFolder(wad.id, selectedRun.id);
+    refreshLatestSaveFromFolder(wad.id, getSelectedRunIdForWad(wad.id));
   });
 
   manualZdsImportButton?.addEventListener('click', () => fileInput?.click());
   fileInput?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
-    if (file) await importZdsFile(file, selectedRun.id);
+    if (file) await importZdsFile(file, getSelectedRunIdForWad(wad.id));
     fileInput.value = '';
   });
 
@@ -2420,11 +2428,10 @@ function recordLatestSaveInfo(wad, payload) {
 }
 
 async function refreshLatestSaveFromFolder(wadId, runId) {
-  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  let wad = state.app.wads.find((entry) => entry.id === wadId);
   if (!wad) return;
-  const run = wad.runs.find((entry) => entry.id === runId);
-  if (!run) return;
 
+  const selectedRunId = runId || getSelectedRunIdForWad(wadId);
   const input = document.getElementById('saveFolderPathInput');
   const folderPath = String(input?.value || wad.saveFolderPath || '').trim();
   if (!folderPath) {
@@ -2432,8 +2439,10 @@ async function refreshLatestSaveFromFolder(wadId, runId) {
     return;
   }
 
+  // Do not save the folder path before refreshing. If the death monitor has
+  // written fresh deaths to the database while this page is stale, an early save
+  // would overwrite them before the preservation merge can see them.
   wad.saveFolderPath = folderPath;
-  saveState();
 
   try {
     const response = await fetch('/api/refresh-stats', {
@@ -2444,6 +2453,18 @@ async function refreshLatestSaveFromFolder(wadId, runId) {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'Local server refresh failed.');
+
+    // Pull in any live terminal death monitor changes before merging the .zds.
+    // This keeps Refresh Latest .zds consistent with Refresh All.
+    await preserveLiveDeathCountsBeforeSave();
+
+    wad = state.app.wads.find((entry) => entry.id === wadId);
+    if (!wad) return;
+    wad.saveFolderPath = folderPath;
+    const run = wad.runs.find((entry) => entry.id === selectedRunId) || getLatestRun(wad);
+    if (!run) return;
+    wad.selectedRunId = run.id;
+
     recordLatestSaveInfo(wad, payload);
 
     const levels = payload?.statistics?.levels || payload?.levels;
@@ -2454,7 +2475,7 @@ async function refreshLatestSaveFromFolder(wadId, runId) {
     const imported = Number(mergeResult?.imported ?? mergeResult) || 0;
     const newlyPlayed = Number(mergeResult?.newlyPlayed) || 0;
     const stateChange = applyAutomaticPlayStateFromRefresh(wad, run, newlyPlayed);
-    saveState();
+    await saveState();
     showAlert('success', `Refreshed ${imported} map record${imported === 1 ? '' : 's'} from ${payload.fileName || 'latest .zds'}.${stateChange ? ` ${stateChange}` : ''}`);
     render();
   } catch (error) {
@@ -4029,6 +4050,20 @@ function getLatestRun(wad) {
   return wad.runs[wad.runs.length - 1];
 }
 
+function getSelectedRunIdForWad(wadId) {
+  const selector = document.getElementById('runSelector');
+  if (selector && selector.value) return selector.value;
+  const wad = state.app.wads.find((entry) => String(entry.id) === String(wadId));
+  return wad?.selectedRunId || getLatestRun(wad)?.id || '';
+}
+
+function getSelectedRunForWad(wadId) {
+  const wad = state.app.wads.find((entry) => String(entry.id) === String(wadId));
+  if (!wad) return null;
+  const runId = getSelectedRunIdForWad(wadId);
+  return wad.runs.find((entry) => String(entry.id) === String(runId)) || getLatestRun(wad);
+}
+
 
 async function handleDatabaseImport(event) {
   const file = event.target?.files?.[0];
@@ -4440,8 +4475,75 @@ async function loadState() {
   }
 }
 
+
+function mergeDeathCountsFromExternalAppState(externalApp) {
+  const externalWads = Array.isArray(externalApp?.wads) ? externalApp.wads : [];
+  const localWads = Array.isArray(state.app?.wads) ? state.app.wads : [];
+  let preserved = 0;
+
+  for (const localWad of localWads) {
+    const externalWad = externalWads.find((entry) => String(entry?.id || '') === String(localWad?.id || ''));
+    if (!externalWad) continue;
+
+    const localRuns = Array.isArray(localWad.runs) ? localWad.runs : [];
+    const externalRuns = Array.isArray(externalWad.runs) ? externalWad.runs : [];
+
+    for (let runIndex = 0; runIndex < localRuns.length; runIndex += 1) {
+      const localRun = localRuns[runIndex];
+      const externalRun = externalRuns.find((entry) => String(entry?.id || '') === String(localRun?.id || '')) || externalRuns[runIndex];
+      if (!externalRun) continue;
+
+      if (!Array.isArray(localRun.maps)) localRun.maps = [];
+      const externalMaps = Array.isArray(externalRun.maps) ? externalRun.maps : [];
+
+      for (const externalMap of externalMaps) {
+        const externalDeaths = Math.max(0, Number(externalMap?.deaths) || 0);
+        if (!externalDeaths) continue;
+
+        const externalLevel = String(externalMap?.levelName || '').trim().toUpperCase();
+        if (!externalLevel) continue;
+
+        let localMap = localRun.maps.find((map) => String(map?.levelName || '').trim().toUpperCase() === externalLevel);
+        if (!localMap) {
+          localRun.maps.push(normalizeImportedMap(externalMap));
+          preserved += externalDeaths;
+          continue;
+        }
+
+        const localDeaths = Math.max(0, Number(localMap.deaths) || 0);
+        if (externalDeaths > localDeaths) {
+          localMap.deaths = externalDeaths;
+          localMap.updatedAt = externalMap.updatedAt || new Date().toISOString();
+          if (externalMap.notes && !String(localMap.notes || '').includes(String(externalMap.notes))) {
+            localMap.notes = String(localMap.notes || '')
+              ? `${String(localMap.notes || '')}\n${String(externalMap.notes || '')}`.slice(-1000)
+              : String(externalMap.notes || '');
+          }
+          preserved += externalDeaths - localDeaths;
+        }
+      }
+    }
+  }
+
+  return preserved;
+}
+
+async function preserveLiveDeathCountsBeforeSave() {
+  try {
+    const response = await fetch(DATABASE_API, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return 0;
+    const externalApp = payload.app || payload;
+    return mergeDeathCountsFromExternalAppState(externalApp);
+  } catch (error) {
+    console.warn('Could not pre-merge live death counts before saving.', error);
+    return 0;
+  }
+}
+
 async function saveState() {
   try {
+    await preserveLiveDeathCountsBeforeSave();
     const response = await fetch(DATABASE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

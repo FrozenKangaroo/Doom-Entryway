@@ -1,13 +1,13 @@
-# Doom Run Tracker 1.5.3
+# Doom Run Tracker 1.5.5
 
-## v1.5.3 WebDAV sync result cleanup
+## v1.5.5 Death tracking persistence fix
 
-Cleans up the WebDAV sync report:
+Fixes a death tracking race where refreshing latest `.zds` stats from a still-open browser page could overwrite deaths that were counted by the live terminal monitor.
 
-- Remote TXT tombstones are only shown when an actual remote file was deleted.
-- Missing optional remote TXT files are silently cleared from the deletion queue instead of appearing every sync.
-- Skipped files are summarized by reason instead of listing hundreds of unchanged/hash-matched files.
-- Full sync payload is still logged to the browser console for debugging.
+- Before saving, the app now re-checks the latest database and preserves any higher death counts written by the monitor.
+- Death monitor-created map rows are preserved if the browser state has not reloaded them yet.
+- The monitor now writes to the selected run when available, falling back to the last run.
+- WebDAV sync result cleanup from v1.5.3 is retained.
 
 ## v1.2.1 Library quick filters
 - Click a WAD card play state to filter to that state.
