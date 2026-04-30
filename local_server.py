@@ -20,6 +20,7 @@ import io
 import json
 import mimetypes
 import os
+import subprocess
 import re
 import struct
 import ssl
@@ -45,12 +46,13 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.3.5"
+APP_VERSION = "1.5.2"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
 SCREENSHOT_API_PREFIX = "/api/screenshot"
 SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+DOOM_MOD_EXTENSIONS = {".wad", ".pk3", ".pk7", ".zip", ".deh", ".bex", ".cfg", ".ini", ".txt"}
 SYNC_TEMP_SUFFIX = ".doomtracker-uploading.tmp"
 SYNC_ROOT_FOLDERS = {
     "saves": "Saves",
@@ -59,9 +61,226 @@ SYNC_ROOT_FOLDERS = {
     "iwads": "IWADs",
     "metadata": "Metadata",
     "titlepics": "Titlepics",
+    "mods": "Mods",
+    "additionalFiles": "AdditionalFiles",
     "database": "Database",
 }
 
+
+
+def _create_local_folders(payload: dict) -> dict:
+    folders = payload.get("folders")
+    if not isinstance(folders, list):
+        raise ValueError("folders[] is required.")
+    created: list[dict] = []
+    existing: list[dict] = []
+    skipped: list[dict] = []
+    for entry in folders:
+        label = str(entry.get("label") if isinstance(entry, dict) else "Folder").strip() or "Folder"
+        raw_path = str(entry.get("path") if isinstance(entry, dict) else entry).strip()
+        if not raw_path:
+            skipped.append({"label": label, "reason": "No path configured."})
+            continue
+        target = Path(os.path.expanduser(raw_path)).resolve()
+        if target.exists():
+            if not target.is_dir():
+                raise ValueError(f"{label} exists but is not a folder: {target}")
+            existing.append({"label": label, "path": str(target)})
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        created.append({"label": label, "path": str(target)})
+    return {"created": created, "existing": existing, "skipped": skipped}
+
+
+def _launch_game(payload: dict) -> dict:
+    executable = str(payload.get("executable") or "").strip()
+    iwad_path = str(payload.get("iwadPath") or "").strip()
+    pwad_path = str(payload.get("pwadPath") or "").strip()
+    raw_file_paths = payload.get("filePaths") or []
+    if not isinstance(raw_file_paths, list):
+        raw_file_paths = []
+    save_dir = str(payload.get("saveDir") or "").strip()
+    shot_dir = str(payload.get("shotDir") or save_dir or "").strip()
+    wad_id = str(payload.get("wadId") or "").strip()
+    monitor_deaths = bool(payload.get("monitorDeaths", True))
+
+    if not executable:
+        raise ValueError("Game executable is required.")
+    if not iwad_path:
+        raise ValueError("IWAD path is required.")
+    if not save_dir:
+        raise ValueError("Save directory is required.")
+    if not shot_dir:
+        raise ValueError("Screenshot directory is required.")
+
+    exe_path = Path(os.path.expanduser(executable)).resolve()
+    iwad = Path(os.path.expanduser(iwad_path)).resolve()
+    file_paths = [str(item or "").strip() for item in raw_file_paths if str(item or "").strip()]
+    if not file_paths and pwad_path:
+        file_paths = [pwad_path]
+    launch_files = [Path(os.path.expanduser(path)).resolve() for path in file_paths]
+    pwad = launch_files[0] if launch_files else None
+    savedir = Path(os.path.expanduser(save_dir)).resolve()
+    shotdir = Path(os.path.expanduser(shot_dir)).resolve()
+
+    if not exe_path.exists():
+        raise FileNotFoundError(f"Game executable was not found: {exe_path}")
+    if not iwad.is_file():
+        raise FileNotFoundError(f"IWAD was not found: {iwad}")
+    for launch_file in launch_files:
+        if not launch_file.is_file():
+            raise FileNotFoundError(f"Launch file was not found: {launch_file}")
+    if not savedir.is_dir():
+        raise FileNotFoundError(f"Save directory was not found: {savedir}")
+    if not shotdir.is_dir():
+        raise FileNotFoundError(f"Screenshot directory was not found: {shotdir}")
+
+    if exe_path.suffix.lower() == ".sh":
+        command = ["flatpak-spawn", "--host", str(exe_path)]
+    else:
+        command = [str(exe_path)]
+    command += ["-iwad", str(iwad)]
+    if launch_files:
+        command += ["-file"] + [str(path) for path in launch_files]
+    command += ["-savedir", str(savedir), "-shotdir", str(shotdir)]
+
+    proc = subprocess.Popen(
+        command,
+        cwd=str(exe_path.parent),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        start_new_session=True,
+    )
+    if monitor_deaths and wad_id:
+        _start_death_monitor_thread(proc, wad_id)
+    return {"command": command, "pid": proc.pid, "deathMonitor": bool(monitor_deaths and wad_id)}
+
+
+_DEATH_MONITOR_THREADS = []
+_MAP_HEADER_RE = re.compile(r"^\s*((?:MAP\d{2})|(?:E\dM\d))\s*(?:[-:–—].*)?$", re.IGNORECASE)
+
+# Standard GZDoom/ZDoom obituary messages. The player name is configurable,
+# and output may include a leading colon, so both are treated as variable.
+_DEATH_OBITUARY_RE = re.compile(
+    r"^\s*:?.+?\s+(?:"
+    r"was killed by a Zombieman\.|"
+    r"was shot by a Sergeant\.|"
+    r"was perforated by a Chaingunner\.|"
+    r"met a Nazi\.|"
+    r"was slashed by an Imp\.|"
+    r"was burned by an Imp\.|"
+    r"was bit by a Demon\.|"
+    r"was eaten by a Spectre\.|"
+    r"was spooked by a Lost Soul\.|"
+    r"was devoured by a Cacodemon\.|"
+    r"was smitten by a Cacodemon\.|"
+    r"was gutted by a Hell Knight\.|"
+    r"was splayed by a Hell Knight\.|"
+    r"was ripped open by a Baron of Hell\.|"
+    r"was bruised by a Baron of Hell\.|"
+    r"let an Arachnotron get (?:him|her|them|it)\.?|"
+    r"was punched by a Revenant\.|"
+    r"couldn['’]?t evade a Revenant['’]s fireball\.|"
+    r"was squashed by a Mancubus\.|"
+    r"was incinerated by an Arch-Vile\.|"
+    r"stood in awe of the Spider Mastermind\.|"
+    r"was splattered by a Cyberdemon\.|"
+    r"killed (?:himself|herself|themself|itself)\.?|"
+    r"mutated\.|"
+    r"was squished\.|"
+    r"was telefragged\."
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+def _start_death_monitor_thread(proc: subprocess.Popen, wad_id: str) -> None:
+    import threading
+    thread = threading.Thread(target=_monitor_doom_output_for_deaths, args=(proc, wad_id), daemon=True)
+    thread.start()
+    _DEATH_MONITOR_THREADS.append(thread)
+
+def _monitor_doom_output_for_deaths(proc: subprocess.Popen, wad_id: str) -> None:
+    current_map = ""
+    stream = proc.stdout
+    if stream is None:
+        return
+    for raw_line in stream:
+        line = raw_line.strip()
+        if not line:
+            continue
+        map_match = _MAP_HEADER_RE.match(line)
+        if map_match:
+            current_map = map_match.group(1).upper()
+            continue
+        if current_map and _is_doom_death_message(line):
+            try:
+                _increment_map_death_count(wad_id, current_map, line)
+            except Exception as exc:
+                print(f"Doom Tracker death monitor failed: {exc}", flush=True)
+    try:
+        proc.wait(timeout=1)
+    except Exception:
+        pass
+
+def _is_doom_death_message(line: str) -> bool:
+    text = line.strip()
+    if not text:
+        return False
+    return bool(_DEATH_OBITUARY_RE.match(text))
+
+def _increment_map_death_count(wad_id: str, level_name: str, message: str) -> None:
+    app = _load_database()
+    wads = app.get("wads") if isinstance(app.get("wads"), list) else []
+    wad = next((entry for entry in wads if str(entry.get("id")) == str(wad_id)), None)
+    if not wad:
+        return
+    runs = wad.get("runs") if isinstance(wad.get("runs"), list) else []
+    if not runs:
+        return
+    run = runs[-1]
+    maps = run.get("maps") if isinstance(run.get("maps"), list) else []
+    wanted = level_name.upper()
+    target = None
+    for m in maps:
+        candidates = [m.get("levelName"), m.get("displayName")]
+        if any(str(value or "").strip().upper() == wanted for value in candidates):
+            target = m
+            break
+    if target is None:
+        target = {
+            "id": f"death-monitor-{wanted}",
+            "levelName": wanted,
+            "displayName": wanted,
+            "mapAuthor": "",
+            "killcount": 0,
+            "totalkills": 0,
+            "itemcount": 0,
+            "totalitems": 0,
+            "secretcount": 0,
+            "totalsecrets": 0,
+            "leveltime": 0,
+            "deaths": 0,
+            "sourceType": "death-monitor",
+            "saveFileName": "",
+            "notes": "Created by terminal death monitor.",
+        }
+        maps.append(target)
+        run["maps"] = maps
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    target["deaths"] = int(target.get("deaths") or 0) + 1
+    target["updatedAt"] = now
+    base_note = str(target.get("notes") or "")
+    monitor_note = f"Latest death monitor message: {message[:180]}"
+    target["notes"] = monitor_note if not base_note else f"{base_note}\n{monitor_note}"[-1000:]
+    run["updatedAt"] = now
+    wad["updatedAt"] = now
+    _save_database(app)
+    print(f"Doom Tracker: counted death for {wad.get('title') or wad_id} {wanted}: {message}", flush=True)
 
 def _safe_slug(value: str, fallback: str = "titlepic") -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip()).strip("._-")
@@ -1685,6 +1904,68 @@ def _detect_screenshot_folder(root: Path, wad_name: str) -> dict:
     return {"bestMatch": candidates[0], "candidates": candidates[:10]}
 
 
+
+def _setting_path(settings: dict, *keys: str) -> str:
+    for key in keys:
+        value = str(settings.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+def _scan_launch_files(mods_folder_raw: str = "", additional_files_folder_raw: str = "", additional_root_raw: str = "", additional_subfolder: str = "") -> dict:
+    local_settings = _load_settings()
+    mods_folder_raw = str(mods_folder_raw or "").strip() or _setting_path(local_settings, "modsFolder", "globalModsFolder", "modFolder", "modsPath")
+    additional_files_folder_raw = str(additional_files_folder_raw or "").strip()
+    if not additional_files_folder_raw:
+        root = str(additional_root_raw or "").strip() or _setting_path(local_settings, "additionalFilesFolder", "additionalFilesRoot", "additionalFilesPath", "additionalFiles")
+        sub = str(additional_subfolder or "").strip().strip("/\\")
+        additional_files_folder_raw = str(Path(os.path.expanduser(root)) / sub) if root and sub else root
+
+    def scan_folder(raw: str, label: str) -> tuple[list[dict], str, list[dict]]:
+        raw = str(raw or "").strip()
+        if not raw:
+            return [], "", [{"folder": label, "reason": "Folder not set."}]
+        folder = Path(os.path.expanduser(raw)).resolve()
+        if not folder.exists():
+            return [], str(folder), [{"folder": label, "reason": f"Folder does not exist: {folder}"}]
+        if not folder.is_dir():
+            return [], str(folder), [{"folder": label, "reason": f"Path is not a folder: {folder}"}]
+        found = []
+        max_depth = 8
+        for root, dirnames, filenames in os.walk(folder):
+            root_path = Path(root)
+            depth = len(root_path.relative_to(folder).parts)
+            if depth >= max_depth:
+                dirnames[:] = []
+            for filename in sorted(filenames, key=str.lower):
+                path = root_path / filename
+                if path.suffix.lower() not in DOOM_MOD_EXTENSIONS:
+                    continue
+                rel = str(path.relative_to(folder)).replace('\\', '/')
+                try:
+                    stat = path.stat()
+                    found.append({
+                        "fileName": filename,
+                        "path": str(path),
+                        "relativePath": rel,
+                        "size": stat.st_size,
+                        "modifiedTime": int(stat.st_mtime),
+                    })
+                except OSError:
+                    continue
+        found.sort(key=lambda item: item["relativePath"].lower())
+        return found, str(folder), []
+
+    global_mods, mods_folder, mod_warnings = scan_folder(mods_folder_raw, "Mods folder")
+    additional_files, additional_folder, additional_warnings = scan_folder(additional_files_folder_raw, "Additional files folder")
+    return {
+        "globalMods": global_mods,
+        "additionalFiles": additional_files,
+        "modsFolder": mods_folder,
+        "additionalFilesFolder": additional_folder,
+        "warnings": mod_warnings + additional_warnings,
+    }
+
 def _scan_screenshot_folder(folder: Path) -> dict:
     if not folder.exists():
         raise FileNotFoundError(f"Screenshot folder does not exist: {folder}")
@@ -2659,6 +2940,10 @@ def _local_folder_for_category(settings: dict, wad: dict | None, category: str) 
         raw = str(settings.get("defaultMetadataFolder") or "").strip()
     elif category == "titlepics":
         raw = str(settings.get("defaultTitlepicsFolder") or "").strip()
+    elif category == "mods":
+        raw = str(settings.get("modsFolder") or "").strip()
+    elif category == "additionalFiles":
+        raw = str(settings.get("additionalFilesFolder") or "").strip()
     else:
         raw = ""
     return Path(os.path.expanduser(raw)).resolve() if raw else None
@@ -2905,6 +3190,105 @@ def _sync_database_to_webdav(opener, base_url: str, app: dict, report: list[dict
     return _webdav_upload_bytes_atomic(opener, base_url, folder, "doom_tracker_database.json", data, force=True)
 
 
+
+def _webdav_collect_remote_files_recursive(opener, folder_url: str, base_folder_url: str, extensions: set[str] | None = None) -> list[dict]:
+    results: list[dict] = []
+    for child_url in _webdav_list_children(opener, folder_url):
+        if child_url.endswith('/'):
+            results.extend(_webdav_collect_remote_files_recursive(opener, child_url, base_folder_url, extensions))
+            continue
+        name = _remote_child_name(child_url)
+        if not name or name.endswith(SYNC_TEMP_SUFFIX):
+            continue
+        if extensions and Path(name).suffix.lower() not in extensions:
+            continue
+        rel_url = child_url[len(base_folder_url.rstrip('/') + '/'):] if child_url.startswith(base_folder_url.rstrip('/') + '/') else name
+        rel = '/'.join(unquote(part) for part in rel_url.split('/') if part)
+        stat = _webdav_stat(opener, child_url) or {}
+        results.append({'url': child_url, 'name': name, 'relative': rel, 'stat': stat})
+    return results
+
+
+def _webdav_sync_folder_tree_two_way(opener, base_url: str, folder_path: str, local_folder: Path | None, extensions: set[str], force_upload: bool, uploaded: list, downloaded: list, skipped: list, errors: list, folder_report: list, hash_check: bool = False, settings: dict | None = None, prefer_local_on_conflict: bool = True) -> None:
+    settings = settings if isinstance(settings, dict) else {}
+    if not local_folder:
+        skipped.append({'action': 'skipped', 'remote': folder_path, 'reason': 'local folder not set'})
+        return
+    local_folder = Path(local_folder).expanduser().resolve()
+    local_folder.mkdir(parents=True, exist_ok=True)
+    _webdav_ensure_folder_path(opener, base_url, folder_path, folder_report)
+    remote_url = _webdav_folder_url(base_url, folder_path)
+    local_files: dict[str, Path] = {}
+    for path in _iter_files_with_ext(str(local_folder), extensions, recursive=True):
+        try:
+            rel = _safe_remote_relative_name(path.resolve().relative_to(local_folder).as_posix())
+        except Exception:
+            rel = _safe_remote_relative_name(path.name)
+        if rel:
+            local_files[rel.lower()] = path
+    remote_files = {str(entry.get('relative') or entry.get('name') or '').lower(): entry for entry in _webdav_collect_remote_files_recursive(opener, remote_url, remote_url, extensions)}
+
+    for key, entry in remote_files.items():
+        rel = str(entry.get('relative') or entry.get('name') or '').strip('/').replace('\\', '/')
+        if not rel:
+            continue
+        target = local_folder / Path(rel)
+        rpath = _remote_path(folder_path, rel)
+        try:
+            local_files[key] = target
+            if target.exists() and prefer_local_on_conflict and not force_upload:
+                last_hash = _manifest_hash(settings, rpath)
+                local_hash = _file_sha256(target)
+                local_changed = bool(last_hash and local_hash != last_hash) or not last_hash
+                if _remote_file_newer_or_different(entry.get('stat'), target):
+                    remote_hash = _webdav_remote_sha256(opener, entry['url']) or ''
+                    if remote_hash and remote_hash == local_hash:
+                        _manifest_set(settings, rpath, local_hash, str(target))
+                        skipped.append({'action': 'skipped', 'local': str(target), 'remote': rpath, 'reason': 'hash match'})
+                    elif local_changed:
+                        skipped.append({'action': 'skipped', 'local': str(target), 'remote': rpath, 'reason': 'local protected; will upload local'})
+                    else:
+                        downloaded.append(_webdav_download_file_atomic(opener, entry['url'], target, entry.get('stat')))
+                        if remote_hash:
+                            _manifest_set(settings, rpath, remote_hash, str(target))
+                else:
+                    _manifest_set(settings, rpath, local_hash, str(target))
+                    skipped.append({'action': 'skipped', 'local': str(target), 'remote': rpath, 'reason': 'local current'})
+                continue
+            if _remote_file_newer_or_different(entry.get('stat'), target):
+                if hash_check and target.exists() and _local_remote_hash_match(opener, entry['url'], target):
+                    local_hash = _file_sha256(target)
+                    _manifest_set(settings, rpath, local_hash, str(target))
+                    skipped.append({'action': 'skipped', 'local': str(target), 'remote': rpath, 'reason': 'hash match'})
+                else:
+                    downloaded.append(_webdav_download_file_atomic(opener, entry['url'], target, entry.get('stat')))
+                    remote_hash = _webdav_remote_sha256(opener, entry['url']) or (_file_sha256(target) if target.exists() else '')
+                    _manifest_set(settings, rpath, remote_hash, str(target))
+            else:
+                if target.exists():
+                    _manifest_set(settings, rpath, _file_sha256(target), str(target))
+                skipped.append({'action': 'skipped', 'local': str(target), 'remote': rpath, 'reason': 'local current'})
+        except Exception as exc:
+            errors.append({'local': str(target), 'remote': rpath, 'error': str(exc)})
+
+    for key, path in local_files.items():
+        try:
+            if not path.exists() or path.suffix.lower() not in extensions:
+                continue
+            rel = _safe_remote_relative_name(path.resolve().relative_to(local_folder).as_posix())
+            parent_rel = '/'.join(rel.split('/')[:-1])
+            name = rel.split('/')[-1]
+            remote_folder = f'{folder_path}/{parent_rel}' if parent_rel else folder_path
+            rpath = _remote_path(folder_path, rel)
+            _webdav_ensure_folder_path(opener, base_url, remote_folder, folder_report)
+            result = _webdav_upload_file_atomic(opener, base_url, remote_folder, path, name, force=force_upload, hash_check=hash_check)
+            if result.get('action') == 'uploaded':
+                uploaded.append(result)
+            else:
+                skipped.append(result)
+            _manifest_set(settings, rpath, _file_sha256(path), str(path))
+        except Exception as exc:
+            errors.append({'local': str(path), 'remote': folder_path, 'error': str(exc)})
 def _sync_single_library_file(opener, base_url: str, sync_root: str, local_path: Path, local_root: Path | None, extensions: set[str], force_upload: bool, uploaded: list, downloaded: list, skipped: list, errors: list, folder_report: list, hash_check: bool = False, settings: dict | None = None, prefer_local_on_conflict: bool = True) -> None:
     settings = settings if isinstance(settings, dict) else {}
     try:
@@ -2967,6 +3351,8 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
     if settings.get("syncIwads", True): selected_roots.append(SYNC_ROOT_FOLDERS["iwads"])
     if settings.get("syncMetadataTxt", True): selected_roots.append(SYNC_ROOT_FOLDERS["metadata"])
     if settings.get("syncTitlepics", True): selected_roots.append(SYNC_ROOT_FOLDERS["titlepics"])
+    if settings.get("syncMods", True): selected_roots.append(SYNC_ROOT_FOLDERS["mods"])
+    if settings.get("syncAdditionalFiles", True): selected_roots.append(SYNC_ROOT_FOLDERS["additionalFiles"])
     if settings.get("syncDatabase", True): selected_roots.append(SYNC_ROOT_FOLDERS["database"])
 
     folder_report = []
@@ -3077,6 +3463,20 @@ def _webdav_one_way_sync(payload: dict | None = None) -> dict:
         titlepic_folder = _local_folder_for_category(settings, None, "titlepics")
         if titlepic_folder:
             _webdav_sync_folder_two_way(opener, base_url, SYNC_ROOT_FOLDERS["titlepics"], titlepic_folder, {".png"}, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings)
+
+    if settings.get("syncMods", True):
+        mods_folder = _local_folder_for_category(settings, None, "mods")
+        if mods_folder:
+            _webdav_sync_folder_tree_two_way(opener, base_url, SYNC_ROOT_FOLDERS["mods"], mods_folder, DOOM_MOD_EXTENSIONS, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings, prefer_local_on_conflict=True)
+        else:
+            skipped.append({"action": "skipped", "remote": SYNC_ROOT_FOLDERS["mods"], "reason": "mods folder not set"})
+
+    if settings.get("syncAdditionalFiles", True):
+        additional_folder = _local_folder_for_category(settings, None, "additionalFiles")
+        if additional_folder:
+            _webdav_sync_folder_tree_two_way(opener, base_url, SYNC_ROOT_FOLDERS["additionalFiles"], additional_folder, DOOM_MOD_EXTENSIONS, force_upload, uploaded, downloaded, skipped, errors, folder_report, hash_check=hash_check, settings=settings, prefer_local_on_conflict=True)
+        else:
+            skipped.append({"action": "skipped", "remote": SYNC_ROOT_FOLDERS["additionalFiles"], "reason": "additional files folder not set"})
 
     if settings.get("syncDatabase", True):
         # Database is protected: local edits win conflicts. Remote only overwrites local if local is missing or unchanged since the last sync.
@@ -3496,6 +3896,40 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
                     raise ValueError("folderPath is required.")
                 folder = Path(os.path.expanduser(folder_raw)).resolve()
                 result = _scan_screenshot_folder(folder)
+                _json_response(self, 200, {"ok": True, **result})
+            except Exception as exc:
+                _json_response(self, 400, {"error": str(exc)})
+            return
+
+
+
+        if parsed.path == "/api/create-folders":
+            try:
+                payload = _read_json_body(self)
+                result = _create_local_folders(payload)
+                _json_response(self, 200, {"ok": True, **result})
+            except Exception as exc:
+                _json_response(self, 400, {"error": str(exc)})
+            return
+
+        if parsed.path == "/api/scan-launch-files":
+            try:
+                payload = _read_json_body(self)
+                result = _scan_launch_files(
+                    payload.get("modsFolder", ""),
+                    payload.get("additionalFilesFolder", ""),
+                    payload.get("additionalFilesRoot", ""),
+                    payload.get("additionalSubfolder", ""),
+                )
+                _json_response(self, 200, {"ok": True, **result})
+            except Exception as exc:
+                _json_response(self, 400, {"error": str(exc)})
+            return
+
+        if parsed.path == "/api/launch-game":
+            try:
+                payload = _read_json_body(self)
+                result = _launch_game(payload)
                 _json_response(self, 200, {"ok": True, **result})
             except Exception as exc:
                 _json_response(self, 400, {"error": str(exc)})

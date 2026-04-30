@@ -1,4 +1,4 @@
-const APP_VERSION = "1.3.5";
+const APP_VERSION = "1.5.2";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -37,6 +37,7 @@ const state = {
   mapInputMode: 'counts',
   databaseReady: false,
   pendingNewWadMetadata: null,
+  launchDialog: { wadId: '', globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '' },
 };
 
 const pageTitle = document.getElementById('pageTitle');
@@ -106,8 +107,9 @@ function wireEvents() {
                            author: String(formData.get('author') || '').trim(),
                            iwad: String(formData.get('iwad') || getAppSetting('defaultIwadPath') || '').trim(),
                            sourcePort: String(formData.get('sourcePort') || '').trim(),
-                           saveFolderPath: getAppSetting('defaultRootSaveFolder'),
-                           screenshotFolderPath: getAppSetting('defaultScreenshotFolder'),
+                           saveFolderPath: '',
+                           screenshotFolderPath: '',
+                           additionalFilesPath: '',
                            screenshots: [],
                            pwadPath: metadata?.path || '',
                            pwadFileName: metadata?.fileName || '',
@@ -129,6 +131,18 @@ function wireEvents() {
                            txtMetadataFileName: metadata?.txtMetadataFileName || '',
                            runs: [run],
     };
+    let folderSummary = '';
+    if (formData.get('createMissingFolders') === 'on') {
+      try {
+        const folderResult = await createFoldersForWadIfRequested(wad, { metadata, onlyWhenUnset: true });
+        folderSummary = summarizeFolderCreation(folderResult);
+      } catch (error) {
+        showAlert('error', error.message || 'Created WAD, but folder creation failed.');
+      }
+    } else {
+      wad.saveFolderPath = getAppSetting('defaultRootSaveFolder');
+      wad.screenshotFolderPath = getAppSetting('defaultScreenshotFolder');
+    }
     state.app.wads.unshift(wad);
     await saveState();
     wadForm.reset();
@@ -136,11 +150,11 @@ function wireEvents() {
     updateNewWadMetadataStatus();
     wadDialog.close();
     state.currentWadId = wad.id;
-    showAlert('success', `Created ${wad.title}. Time to start farming medals.`);
+    showAlert('success', `Created ${wad.title}. Time to start farming medals.${folderSummary}`);
     showWadDetail(wad.id);
   });
 
-  editWadForm?.addEventListener('submit', (event) => {
+  editWadForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(editWadForm);
     const wadId = String(formData.get('wadId') || '');
@@ -161,13 +175,23 @@ function wireEvents() {
     wad.excludeFromRefreshAll = formData.get('excludeFromRefreshAll') === 'on';
     wad.updatedAt = new Date().toISOString();
 
-    saveState();
+    let folderSummary = '';
+    if (formData.get('createMissingFolders') === 'on') {
+      try {
+        const folderResult = await createFoldersForWadIfRequested(wad, { onlyWhenUnset: true });
+        folderSummary = summarizeFolderCreation(folderResult);
+      } catch (error) {
+        showAlert('error', error.message || 'WAD info was updated, but folder creation failed.');
+      }
+    }
+
+    await saveState();
     editWadDialog?.close();
     if (state.currentWadId === wad.id) {
       pageTitle.textContent = wad.title;
       pageSubtitle.textContent = `${capitalize(wad.type)} overview, run summary, medals, imports, and manual editing.`;
     }
-    showAlert('success', `${wad.title} info updated.`);
+    showAlert('success', `${wad.title} info updated.${folderSummary}`);
     render();
   });
 
@@ -550,7 +574,8 @@ function renderHomeFallback(error = null) {
         </div>
         <div class="home-hero-actions">
           <button class="primary-button" onclick="window.appActions.goLibrary()">Open Library</button>
-          <button class="secondary-button" onclick="window.appActions.goStats()">Overall Stats</button>
+          <button class="secondary-button" onclick="window.appActions.openTestWadDialog()">Test WAD</button>
+        <button class="secondary-button" onclick="window.appActions.goStats()">Overall Stats</button>
           <button class="secondary-button" onclick="document.getElementById('refreshAllButton')?.click()">Refresh All</button>
           <button class="secondary-button" onclick="document.getElementById('newWadButton')?.click()">New WAD</button>
         </div>
@@ -609,7 +634,9 @@ function renderHome() {
       </div>
       <div class="home-hero-actions">
         <button class="primary-button" onclick="window.appActions.goLibrary()">Open Library</button>
+        <button class="secondary-button" onclick="window.appActions.openTestWadDialog()">Test WAD</button>
         <button class="secondary-button" onclick="window.appActions.goStats()">Overall Stats</button>
+        <button class="secondary-button" onclick="document.getElementById('refreshAllButton')?.click()">Refresh All</button>
         <button class="secondary-button" onclick="document.getElementById('newWadButton')?.click()">New WAD</button>
       </div>
     </section>
@@ -885,6 +912,7 @@ function renderWadDetail() {
   </div>
   </div>
   <div class="control-row">
+  <button class="primary-button" onclick="window.appActions.openLaunchDialog('${escapeJsString(wad.id)}')">▶ Play</button>
   <button class="secondary-button" onclick="window.appActions.goLibrary()">Back to Library</button>
   <button class="secondary-button" onclick="window.appActions.editWad('${wad.id}')">Edit WAD Info</button>
   <button class="danger-button" onclick="window.appActions.deleteWad('${wad.id}')">Delete WAD</button>
@@ -1459,6 +1487,30 @@ function renderSettings() {
           <input name="defaultIwadPath" placeholder="e.g. DOOM2.WAD or /home/damo/Games/Doom/IWADs/DOOM2.WAD" value="${escapeHtml(settings.defaultIwadPath)}" />
           <span class="field-help">Used as the default location or label for manual WAD entries.</span>
         </label>
+
+        <section class="settings-subsection">
+          <div class="section-bar compact-section-bar">
+            <div>
+              <h3>Launch Settings</h3>
+              <p class="muted">Early launcher groundwork. These paths will be used when Doom Tracker starts launching WADs directly.</p>
+            </div>
+          </div>
+          <label>
+            Game executable
+            <input name="gameExecutable" placeholder="e.g. /home/damo/Games/Doom/gzdoom or C:\\Games\\GZDoom\\gzdoom.exe" value="${escapeHtml(settings.gameExecutable)}" />
+            <span class="field-help">Recommended: a GZDoom-family source port that writes <code>.zds</code> saves, so tracking and launching stay aligned.</span>
+          </label>
+          <label>
+            Mods folder
+            <input name="modsFolder" placeholder="e.g. /home/damo/Games/Doom/Mods" value="${escapeHtml(settings.modsFolder)}" />
+            <span class="field-help">Shared/global mods that can be reused with any WAD, such as gameplay mods, visual packs, music packs, or UI patches.</span>
+          </label>
+          <label>
+            Additional files folder
+            <input name="additionalFilesFolder" placeholder="e.g. /home/damo/Games/Doom/AdditionalFiles" value="${escapeHtml(settings.additionalFilesFolder)}" />
+            <span class="field-help">WAD-specific extras live in subfolders here. Example: <code>AdditionalFiles/eternal/eternal_ws.wad</code> for <code>eternal.wad</code>.</span>
+          </label>
+        </section>
         <label class="danger-setting">
           <span>
             <input type="checkbox" name="deleteAssociatedFilesOnWadDelete" ${settings.deleteAssociatedFilesOnWadDelete ? 'checked' : ''} />
@@ -1547,6 +1599,8 @@ function renderSettings() {
             <label class="checkbox-line"><span><input type="checkbox" name="syncMetadataTxt" ${settings.syncMetadataTxt ? 'checked' : ''} /> Metadata TXT</span></label>
             <label class="checkbox-line"><span><input type="checkbox" name="syncTitlepics" ${settings.syncTitlepics ? 'checked' : ''} /> Titlepics</span></label>
             <label class="checkbox-line"><span><input type="checkbox" name="syncScreenshots" ${settings.syncScreenshots ? 'checked' : ''} /> Screenshots</span></label>
+            <label class="checkbox-line"><span><input type="checkbox" name="syncMods" ${settings.syncMods ? 'checked' : ''} /> Mods folder</span></label>
+            <label class="checkbox-line"><span><input type="checkbox" name="syncAdditionalFiles" ${settings.syncAdditionalFiles ? 'checked' : ''} /> Additional files</span></label>
             <label class="checkbox-line"><span><input type="checkbox" name="syncDatabase" ${settings.syncDatabase ? 'checked' : ''} /> Database</span></label>
           </div>
           <span class="field-help">Database files are always verified by hash so backup/version checks do not ping-pong identical JSON.</span>
@@ -3633,8 +3687,9 @@ function renderWadLibraryActions(wad) {
         </select>
       </label>
       ${renderWadTxtInfoButton(wad)}
+      <button class="primary-button" onclick="window.appActions.openLaunchDialog('${escapeJsString(wad.id)}')">▶ Play</button>
       <button class="secondary-button" onclick="window.appActions.editWad('${wad.id}')">Edit</button>
-      <button class="primary-button" onclick="window.appActions.openWad('${wad.id}')">Open</button>
+      <button class="secondary-button" onclick="window.appActions.openWad('${wad.id}')">Open</button>
       <button class="danger-button" onclick="window.appActions.deleteWad('${wad.id}')">Delete</button>
     </div>`;
 }
@@ -3819,6 +3874,7 @@ function openEditWadDialog(wadId) {
   editWadForm.elements.iwad.value = wad.iwad || '';
   editWadForm.elements.notes.value = wad.notes || '';
   if (editWadForm.elements.tags) editWadForm.elements.tags.value = getWadTags(wad).join(', ');
+  if (editWadForm.elements.createMissingFolders) editWadForm.elements.createMissingFolders.checked = false;
   if (editWadForm.elements.excludeFromRefreshAll) editWadForm.elements.excludeFromRefreshAll.checked = wad.excludeFromRefreshAll === true;
   editWadDialog.showModal();
 }
@@ -3851,6 +3907,76 @@ function skillFlagToDifficulty(skill) {
 
 function getMapDifficulty(map, run) {
   return String(map?.difficulty || run?.difficulty || 'UV');
+}
+
+
+function pathJoinClient(base, child) {
+  const root = String(base || '').trim().replace(/[\\/]+$/, '');
+  const name = String(child || '').trim().replace(/^[\\/]+/, '').replace(/[\\/]+$/, '');
+  if (!root || !name) return '';
+  return root + (root.includes('\\') && !root.includes('/') ? '\\' : '/') + name;
+}
+
+function wadTitleFolderName(wadOrTitle) {
+  const value = typeof wadOrTitle === 'string' ? wadOrTitle : wadOrTitle?.title;
+  return clientSafeSlug(value || 'wad', 'wad');
+}
+
+function wadAdditionalFolderName(wad, metadata = null) {
+  const fileName = String(metadata?.fileName || wad?.pwadFileName || fileNameFromPath(wad?.pwadPath) || wad?.iwadFileName || fileNameFromPath(wad?.iwadPath) || wad?.title || 'wad');
+  const stem = fileName.replace(/\.(wad|pk3|pk7)$/i, '');
+  return clientSafeSlug(stem, 'wad');
+}
+
+function isUnsetOrRootFolder(currentValue, rootValue) {
+  const current = normalizePathForCompare(currentValue);
+  const root = normalizePathForCompare(rootValue);
+  return !current || (!!root && current === root);
+}
+
+function applyAutoFolderPathsToWad(wad, { metadata = null, onlyWhenUnset = true } = {}) {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  const titleFolder = wadTitleFolderName(wad);
+  const additionalFolder = wadAdditionalFolderName(wad, metadata);
+  const targets = [];
+
+  const maybeSet = (field, root, folderName, label) => {
+    const target = pathJoinClient(root, folderName);
+    if (!target) return;
+    if (!onlyWhenUnset || isUnsetOrRootFolder(wad[field], root)) {
+      wad[field] = target;
+      targets.push({ label, path: target });
+    }
+  };
+
+  maybeSet('saveFolderPath', settings.defaultRootSaveFolder, titleFolder, 'Save folder');
+  maybeSet('screenshotFolderPath', settings.defaultScreenshotFolder, titleFolder, 'Screenshot folder');
+  maybeSet('additionalFilesPath', settings.additionalFilesFolder, additionalFolder, 'Additional files folder');
+  return targets;
+}
+
+async function createFoldersForWadIfRequested(wad, options = {}) {
+  const targets = applyAutoFolderPathsToWad(wad, options);
+  if (!targets.length) return { created: [], existing: [], skipped: [] };
+  const response = await fetch('/api/create-folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folders: targets }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Folder creation failed.');
+  return payload;
+}
+
+function summarizeFolderCreation(payload) {
+  const created = Array.isArray(payload?.created) ? payload.created.length : 0;
+  const existing = Array.isArray(payload?.existing) ? payload.existing.length : 0;
+  const skipped = Array.isArray(payload?.skipped) ? payload.skipped.length : 0;
+  const parts = [];
+  if (created) parts.push(`${created} created`);
+  if (existing) parts.push(`${existing} already existed`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  return parts.length ? ` Folders: ${parts.join(', ')}.` : '';
 }
 
 function playStateLabel(value) {
@@ -4095,6 +4221,9 @@ function normalizeImportedSettings(settings) {
     defaultScreenshotFolder: String(settings?.defaultScreenshotFolder || '').trim(),
     defaultIwadPath: String(settings?.defaultIwadPath || '').trim(),
     defaultIwadFolder: String(settings?.defaultIwadFolder || settings?.defaultIwadPath || '').trim(),
+    gameExecutable: String(settings?.gameExecutable || '').trim(),
+    modsFolder: String(settings?.modsFolder || '').trim(),
+    additionalFilesFolder: String(settings?.additionalFilesFolder || '').trim(),
     webdavEnabled,
     webdavUrl: String(settings?.webdavUrl || '').trim(),
     webdavRemotePath: String(settings?.webdavRemotePath || '').trim(),
@@ -4109,6 +4238,8 @@ function normalizeImportedSettings(settings) {
     syncMetadataTxt: boolSetting('syncMetadataTxt', true),
     syncTitlepics: boolSetting('syncTitlepics', true),
     syncScreenshots: boolSetting('syncScreenshots', true),
+    syncMods: boolSetting('syncMods', true),
+    syncAdditionalFiles: boolSetting('syncAdditionalFiles', true),
     syncDatabase: boolSetting('syncDatabase', true),
     deleteAssociatedFilesOnWadDelete,
     webdavDeletedFiles: Array.isArray(settings?.webdavDeletedFiles) ? settings.webdavDeletedFiles.filter((entry) => entry && typeof entry === 'object' && entry.remote).map((entry) => ({ remote: String(entry.remote), deletedAt: String(entry.deletedAt || '') })) : [],
@@ -4120,6 +4251,18 @@ function getAppSetting(key) {
   const settings = normalizeImportedSettings(state.app?.settings || {});
   state.app.settings = settings;
   return Object.prototype.hasOwnProperty.call(settings, key) ? settings[key] : '';
+}
+
+function getLaunchFolderSetting(key) {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  state.app.settings = settings;
+  if (key === 'modsFolder') {
+    return String(settings.modsFolder || settings.globalModsFolder || settings.modFolder || settings.modsPath || '').trim();
+  }
+  if (key === 'additionalFilesFolder') {
+    return String(settings.additionalFilesFolder || settings.additionalFilesRoot || settings.additionalFilesPath || settings.additionalFiles || '').trim();
+  }
+  return String(settings[key] || '').trim();
 }
 
 function applyAppSettingsToUiState() {
@@ -4153,6 +4296,7 @@ function normalizeImportedWad(wad) {
     sourcePort: String(wad?.sourcePort || '').trim(),
     saveFolderPath: String(wad?.saveFolderPath || '').trim(),
     screenshotFolderPath: String(wad?.screenshotFolderPath || '').trim(),
+    additionalFilesPath: String(wad?.additionalFilesPath || '').trim(),
     screenshots: Array.isArray(wad?.screenshots) ? wad.screenshots.map(normalizeImportedScreenshot) : [],
     pwadPath: String(wad?.pwadPath || '').trim(),
     pwadFileName: String(wad?.pwadFileName || '').trim(),
@@ -4187,8 +4331,32 @@ function normalizeImportedWad(wad) {
 
   normalized.iwadScanKey = typeof wad?.iwadScanKey === 'string' ? wad.iwadScanKey : '';
   normalized.iwadFileName = typeof wad?.iwadFileName === 'string' ? wad.iwadFileName : '';
+  normalized.launcherSettings = normalizeLauncherSettings(wad?.launcherSettings || wad?.launchSettings || {});
 
   return normalized;
+}
+
+function normalizeLauncherSettings(value = {}) {
+  return {
+    selectedMods: Array.isArray(value?.selectedMods) ? value.selectedMods.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
+    selectedAdditionalFiles: Array.isArray(value?.selectedAdditionalFiles) ? value.selectedAdditionalFiles.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
+    sectionOrder: normalizeLaunchSectionOrder(value?.sectionOrder),
+    updatedAt: typeof value?.updatedAt === 'string' ? value.updatedAt : '',
+  };
+}
+
+function saveLauncherSettingsForWad(wadId, { persist = false } = {}) {
+  const wad = state.app?.wads?.find((entry) => entry.id === wadId);
+  const launchState = state.launchDialog;
+  if (!wad || !launchState || launchState.wadId !== wadId) return;
+  wad.launcherSettings = normalizeLauncherSettings({
+    selectedMods: launchState.selectedMods || [],
+    selectedAdditionalFiles: launchState.selectedAdditionalFiles || [],
+    sectionOrder: launchState.sectionOrder || ['map', 'additional', 'mods'],
+    updatedAt: new Date().toISOString(),
+  });
+  wad.updatedAt = new Date().toISOString();
+  if (persist) saveState();
 }
 
 function normalizeImportedScreenshot(shot) {
@@ -4614,6 +4782,581 @@ This cannot be undone.`;
   }
 }
 
+
+function shellQuote(value) {
+  const text = String(value ?? '');
+  return '"' + text.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"';
+}
+
+function buildLaunchPayload(wad) {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  const executable = settings.gameExecutable;
+  const iwadInfo = resolveLaunchIwadInfo(wad, settings);
+  const isIwadLaunch = isIwadLaunchCard(wad, settings);
+  const pwadPath = isIwadLaunch ? '' : String(wad?.pwadPath || '').trim();
+  const saveDir = String(wad?.saveFolderPath || '').trim();
+  const shotDir = String(wad?.screenshotFolderPath || wad?.saveFolderPath || '').trim();
+  const launchSelection = getActiveLaunchSelection(wad?.id || '');
+  const selectedAdditionalFiles = launchSelection.selectedAdditionalFiles || [];
+  const selectedMods = launchSelection.selectedMods || [];
+  const sectionOrder = launchSelection.sectionOrder || ['map', 'additional', 'mods'];
+  const filePaths = buildOrderedLaunchFiles({ pwadPath, isIwadLaunch, selectedAdditionalFiles, selectedMods, sectionOrder });
+  return {
+    wadId: wad?.id || '',
+    executable,
+    iwadPath: iwadInfo.path,
+    iwadSourceLabel: iwadInfo.label,
+    pwadPath,
+    filePaths,
+    selectedAdditionalFiles,
+    selectedMods,
+    sectionOrder,
+    saveDir,
+    shotDir,
+    isIwadLaunch,
+    monitorDeaths: true,
+    assumeFlatpak: executable.toLowerCase().endsWith('.sh'),
+  };
+}
+
+function isIwadLaunchCard(wad, settings = normalizeImportedSettings(state.app?.settings || {})) {
+  const iwadPath = String(wad?.iwadPath || '').trim();
+  const pwadPath = String(wad?.pwadPath || '').trim();
+  if (iwadPath && !pwadPath) return true;
+  const launchPath = pwadPath || iwadPath;
+  const iwadFolder = settings.defaultIwadFolder || '';
+  return Boolean(launchPath && iwadFolder && isPathInsideFolder(launchPath, iwadFolder));
+}
+
+function resolveLaunchIwadInfo(wad, settings = normalizeImportedSettings(state.app?.settings || {})) {
+  if (isIwadLaunchCard(wad, settings)) {
+    const directPath = String(wad?.iwadPath || wad?.pwadPath || '').trim();
+    return { path: directPath, label: 'this IWAD card' };
+  }
+
+  const field = String(wad?.iwad || '').trim();
+  const match = findScannedIwadForField(field);
+  if (match?.iwadPath) {
+    return { path: String(match.iwadPath).trim(), label: `${match.title || match.iwadFileName || 'scanned IWAD'} from IWAD scan` };
+  }
+
+  const directPath = String(wad?.iwadPath || '').trim();
+  if (directPath) return { path: directPath, label: 'WAD IWAD path' };
+
+  const defaultPath = String(settings.defaultIwadPath || '').trim();
+  return { path: defaultPath, label: defaultPath ? 'default IWAD path' : '' };
+}
+
+function findScannedIwadForField(field) {
+  const key = iwadLaunchKeyFromText(field);
+  const wanted = normalizeIwadFieldForLaunch(field);
+  const candidates = (state.app?.wads || []).filter((entry) => String(entry?.iwadPath || '').trim());
+
+  if (key) {
+    const byKey = candidates.find((entry) => String(entry.iwadScanKey || '').toUpperCase() === key);
+    if (byKey) return byKey;
+  }
+
+  if (wanted) {
+    const exact = candidates.find((entry) => {
+      const values = [entry.title, entry.iwad, entry.iwadFileName, entry.iwadScanKey].map(normalizeIwadFieldForLaunch);
+      return values.includes(wanted);
+    });
+    if (exact) return exact;
+
+    const fuzzy = candidates.find((entry) => {
+      const values = [entry.title, entry.iwad, entry.iwadFileName, entry.iwadScanKey].map(normalizeIwadFieldForLaunch).filter(Boolean);
+      return values.some((value) => value.includes(wanted) || wanted.includes(value));
+    });
+    if (fuzzy) return fuzzy;
+  }
+
+  return null;
+}
+
+function iwadLaunchKeyFromText(value) {
+  const text = normalizeIwadFieldForLaunch(value);
+  if (!text) return '';
+  if (text.includes('plutonia')) return 'PLUTONIA';
+  if (text.includes('tnt') || text.includes('evilution')) return 'TNT';
+  if (text.includes('doomii') || text.includes('doom2') || text.includes('doomtwo')) return 'DOOM2';
+  if (text === 'doom' || text.includes('ultimatedoom') || (text.includes('doom') && !text.includes('doom2') && !text.includes('doomii'))) return 'ULTIMATE_DOOM';
+  return '';
+}
+
+function normalizeIwadFieldForLaunch(value) {
+  return String(value || '').toLowerCase().replace(/\.wad$/i, '').replace(/[^a-z0-9]+/g, '').trim();
+}
+
+function isPathInsideFolder(filePath, folderPath) {
+  const file = normalizePathForCompare(filePath);
+  const folder = normalizePathForCompare(folderPath);
+  return Boolean(file && folder && (file === folder || file.startsWith(folder.endsWith('/') ? folder : `${folder}/`)));
+}
+
+function normalizePathForCompare(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '').toLowerCase().trim();
+}
+
+const LAUNCH_SECTION_LABELS = { map: 'Map file', additional: 'Additional files', mods: 'Mod files' };
+
+function getActiveLaunchSelection(wadId = '') {
+  if (!state.launchDialog || state.launchDialog.wadId !== wadId) {
+    return { wadId, globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '' };
+  }
+  return state.launchDialog;
+}
+
+function launchFileKey(path) {
+  return normalizePathForCompare(path);
+}
+
+function uniqueExistingOrder(paths, availableFiles = []) {
+  const available = new Set((availableFiles || []).map((file) => launchFileKey(file.path)));
+  const seen = new Set();
+  return (paths || []).filter((path) => {
+    const key = launchFileKey(path);
+    if (!key || seen.has(key)) return false;
+    if (available.size && !available.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeSelectionWithFiles(selectedPaths, files) {
+  return uniqueExistingOrder(selectedPaths, files);
+}
+
+function buildOrderedLaunchFiles({ pwadPath = '', isIwadLaunch = false, selectedAdditionalFiles = [], selectedMods = [], sectionOrder = ['map', 'additional', 'mods'] } = {}) {
+  const parts = {
+    map: (!isIwadLaunch && pwadPath) ? [pwadPath] : [],
+    additional: Array.isArray(selectedAdditionalFiles) ? selectedAdditionalFiles : [],
+    mods: Array.isArray(selectedMods) ? selectedMods : [],
+  };
+  const seen = new Set();
+  const order = normalizeLaunchSectionOrder(sectionOrder);
+  return order.flatMap((section) => parts[section] || []).filter((path) => {
+    const key = launchFileKey(path);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function launchFileLabel(fileOrPath) {
+  if (typeof fileOrPath === 'string') return fileOrPath.split(/[\\/]/).pop() || fileOrPath;
+  return fileOrPath?.relativePath || fileOrPath?.fileName || fileOrPath?.path || 'file';
+}
+
+function normalizeLaunchSectionOrder(order) {
+  const valid = ['map', 'additional', 'mods'];
+  const clean = (Array.isArray(order) ? order : []).filter((entry, index, arr) => valid.includes(entry) && arr.indexOf(entry) === index);
+  valid.forEach((entry) => { if (!clean.includes(entry)) clean.push(entry); });
+  return clean;
+}
+
+function renderLaunchFilePicker(sectionKey, files, selectedPaths) {
+  const normalizedSelected = uniqueExistingOrder(selectedPaths, files);
+  const selected = new Set(normalizedSelected.map(launchFileKey));
+  if (!files.length) {
+    const empty = sectionKey === 'mods' ? 'No global mod files found in the Mods folder.' : 'No WAD-specific additional files found.';
+    return `<p class="muted">${empty}</p>`;
+  }
+  const ordered = [
+    ...normalizedSelected.map((path) => files.find((file) => launchFileKey(file.path) === launchFileKey(path))).filter(Boolean),
+    ...files.filter((file) => !selected.has(launchFileKey(file.path))),
+  ];
+  return `<div class="launch-file-list">${ordered.map((file) => {
+    const checked = selected.has(launchFileKey(file.path));
+    const selectedIndex = normalizedSelected.findIndex((path) => launchFileKey(path) === launchFileKey(file.path));
+    return `<div class="launch-file-row ${checked ? 'selected' : ''}">
+      <label class="checkbox-line launch-file-check"><span><input type="checkbox" ${checked ? 'checked' : ''} onchange="window.appActions.toggleLaunchFile('${sectionKey}', '${escapeJsString(file.path)}', this.checked)" /> ${escapeHtml(launchFileLabel(file))}</span></label>
+      <code title="${escapeHtml(file.path)}">${escapeHtml(file.relativePath || file.path)}</code>
+      <div class="launch-file-actions">
+        <button type="button" class="secondary-button mini-button" ${!checked || selectedIndex <= 0 ? 'disabled' : ''} onclick="window.appActions.moveLaunchFile('${sectionKey}', '${escapeJsString(file.path)}', -1)">↑</button>
+        <button type="button" class="secondary-button mini-button" ${!checked || selectedIndex < 0 || selectedIndex >= normalizedSelected.length - 1 ? 'disabled' : ''} onclick="window.appActions.moveLaunchFile('${sectionKey}', '${escapeJsString(file.path)}', 1)">↓</button>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderLaunchSectionOrder(order) {
+  const clean = normalizeLaunchSectionOrder(order);
+  return `<div class="launch-order-list">${clean.map((section, index) => `<div class="launch-order-row">
+    <strong>${index + 1}. ${LAUNCH_SECTION_LABELS[section]}</strong>
+    <div class="launch-file-actions">
+      <button type="button" class="secondary-button mini-button" ${index === 0 ? 'disabled' : ''} onclick="window.appActions.moveLaunchSection('${section}', -1)">↑</button>
+      <button type="button" class="secondary-button mini-button" ${index === clean.length - 1 ? 'disabled' : ''} onclick="window.appActions.moveLaunchSection('${section}', 1)">↓</button>
+    </div>
+  </div>`).join('')}</div>`;
+}
+
+async function scanLaunchFilesForWad(wad) {
+  const modsFolder = getLaunchFolderSetting('modsFolder');
+  const additionalRoot = getLaunchFolderSetting('additionalFilesFolder');
+  const additionalSubfolder = wadAdditionalFolderName(wad);
+  const additionalFolder = pathJoinClient(additionalRoot, additionalSubfolder);
+  const response = await fetch('/api/scan-launch-files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      modsFolder,
+      additionalFilesFolder: additionalFolder,
+      additionalFilesRoot: additionalRoot,
+      additionalSubfolder,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Could not scan launch files.');
+  return {
+    globalMods: Array.isArray(payload.globalMods) ? payload.globalMods : [],
+    additionalFiles: Array.isArray(payload.additionalFiles) ? payload.additionalFiles : [],
+    additionalFilesFolder: payload.additionalFilesFolder || additionalFolder,
+    modsFolder: payload.modsFolder || modsFolder || '',
+  };
+}
+
+function rerenderLaunchDialogBody(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  const body = document.getElementById('launchDialogBody');
+  if (!wad || !body) return;
+  const payload = buildLaunchPayload(wad);
+  const errors = validateLaunchPayload(payload);
+  const launchState = getActiveLaunchSelection(wad.id);
+  body.innerHTML = `
+    <p class="muted">Choose global mods and WAD-specific additional files, set priority inside each section, then choose the overall section load order.</p>
+    <div class="upload-callout">Death monitor enabled: Doom Tracker will watch terminal output for map headers like <code>MAP01</code> / <code>E1M1</code> and obituary lines, then add 1 death to that map.</div>
+    ${payload.assumeFlatpak ? '<div class="upload-callout">Shell script executable detected, so Doom Tracker will launch it through <code>flatpak-spawn --host</code>.</div>' : ''}
+    ${payload.iwadSourceLabel ? `<div class="upload-callout">IWAD resolved from: <strong>${escapeHtml(payload.iwadSourceLabel)}</strong></div>` : ''}
+    <div id="launchDialogErrors">${errors.length ? `<div class="launch-warning"><strong>Needs attention before launch:</strong><ul>${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>` : ''}</div>
+    <section class="summary-card launch-picker-card">
+      <div class="section-bar compact-section-bar"><h4>Overall load order</h4><p class="muted">Later files override earlier files when they replace the same assets.</p></div>
+      ${renderLaunchSectionOrder(launchState.sectionOrder)}
+    </section>
+    <section class="summary-card launch-picker-card">
+      <div class="section-bar compact-section-bar"><h4>Map file</h4></div>
+      <p class="muted">${payload.isIwadLaunch ? 'IWAD launch: no separate map file is loaded.' : escapeHtml(payload.pwadPath || 'No WAD/PK3 associated yet.')}</p>
+    </section>
+    <section class="summary-card launch-picker-card">
+      <div class="section-bar compact-section-bar"><h4>Additional files</h4><p class="muted">WAD-specific files from <code>${escapeHtml(launchState.additionalFilesFolder || 'not set')}</code>.</p></div>
+      ${renderLaunchFilePicker('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || [])}
+    </section>
+    <section class="summary-card launch-picker-card">
+      <div class="section-bar compact-section-bar"><h4>Mod files</h4><p class="muted">Global mods from <code>${escapeHtml(launchState.modsFolder || 'not set')}</code>.</p></div>
+      ${renderLaunchFilePicker('mods', launchState.globalMods || [], launchState.selectedMods || [])}
+    </section>
+    <label class="full-span">Command line preview
+      <textarea id="launchCommandPreview" class="command-preview" readonly rows="6">${escapeHtml(buildLaunchCommandPreview(wad))}</textarea>
+    </label>
+  `;
+  const launchButton = document.getElementById('launchDialogLaunchButton');
+  if (launchButton) launchButton.disabled = errors.length > 0;
+}
+
+function toggleLaunchFile(section, path, checked) {
+  const launchState = state.launchDialog;
+  const key = section === 'mods' ? 'selectedMods' : 'selectedAdditionalFiles';
+  const current = Array.isArray(launchState[key]) ? [...launchState[key]] : [];
+  const normalized = launchFileKey(path);
+  const exists = current.some((entry) => launchFileKey(entry) === normalized);
+  if (checked && !exists) current.push(path);
+  if (!checked) {
+    const index = current.findIndex((entry) => launchFileKey(entry) === normalized);
+    if (index >= 0) current.splice(index, 1);
+  }
+  launchState[key] = current;
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function moveLaunchFile(section, path, direction) {
+  const launchState = state.launchDialog;
+  const key = section === 'mods' ? 'selectedMods' : 'selectedAdditionalFiles';
+  const current = Array.isArray(launchState[key]) ? [...launchState[key]] : [];
+  const index = current.findIndex((entry) => launchFileKey(entry) === launchFileKey(path));
+  const next = index + Number(direction || 0);
+  if (index < 0 || next < 0 || next >= current.length) return;
+  [current[index], current[next]] = [current[next], current[index]];
+  launchState[key] = current;
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function moveLaunchSection(section, direction) {
+  const launchState = state.launchDialog;
+  const order = normalizeLaunchSectionOrder(launchState.sectionOrder);
+  const index = order.indexOf(section);
+  const next = index + Number(direction || 0);
+  if (index < 0 || next < 0 || next >= order.length) return;
+  [order[index], order[next]] = [order[next], order[index]];
+  launchState.sectionOrder = order;
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function buildLaunchCommandPreview(wad) {
+  return buildLaunchCommandPreviewFromPayload(buildLaunchPayload(wad));
+}
+
+function buildLaunchCommandPreviewFromPayload(payload) {
+  const command = [];
+  if (payload.assumeFlatpak) {
+    command.push('flatpak-spawn', '--host', payload.executable);
+  } else {
+    command.push(payload.executable);
+  }
+  if (payload.iwadPath) command.push('-iwad', payload.iwadPath);
+  const fileList = Array.isArray(payload.filePaths) && payload.filePaths.length ? payload.filePaths : (payload.pwadPath ? [payload.pwadPath] : []);
+  if (fileList.length) command.push('-file', ...fileList);
+  if (payload.saveDir) command.push('-savedir', payload.saveDir);
+  if (payload.shotDir) command.push('-shotdir', payload.shotDir);
+  return command.map(shellQuote).join(' ');
+}
+
+function validateLaunchPayload(payload) {
+  const errors = [];
+  if (!payload.executable) errors.push('Set Game Executable in Settings first.');
+  if (!payload.iwadPath) errors.push('Set this WAD\'s IWAD field to a scanned IWAD, set an IWAD path, or set the Default IWAD path in Settings.');
+  if (!payload.isIwadLaunch && !payload.pwadPath) errors.push('Associate a WAD/PK3 file with this PWAD card first.');
+  if (!payload.saveDir) errors.push('Set this WAD\'s Local Save Folder first.');
+  if (!payload.shotDir) errors.push('Set this WAD\'s Screenshot Folder or Local Save Folder first.');
+  return errors;
+}
+
+async function openLaunchDialog(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  const dialog = document.getElementById('launchDialog');
+  const title = document.getElementById('launchDialogTitle');
+  const body = document.getElementById('launchDialogBody');
+  const launchButton = document.getElementById('launchDialogLaunchButton');
+  if (!wad || !dialog || !title || !body || !launchButton) return;
+  title.textContent = `Launch ${wad.title || 'WAD'}`;
+  launchButton.disabled = true;
+  launchButton.onclick = () => launchWad(wad.id);
+  const savedLaunchSettings = normalizeLauncherSettings(wad.launcherSettings || {});
+  state.launchDialog = {
+    wadId: wad.id,
+    globalMods: [],
+    additionalFiles: [],
+    selectedMods: savedLaunchSettings.selectedMods || [],
+    selectedAdditionalFiles: savedLaunchSettings.selectedAdditionalFiles || [],
+    sectionOrder: savedLaunchSettings.sectionOrder || ['map', 'additional', 'mods'],
+    modsFolder: '',
+    additionalFilesFolder: '',
+  };
+  body.innerHTML = '<p class="muted">Scanning Mods and Additional Files folders...</p>';
+  dialog.showModal();
+  try {
+    const files = await scanLaunchFilesForWad(wad);
+    state.launchDialog.globalMods = files.globalMods;
+    state.launchDialog.additionalFiles = files.additionalFiles;
+    state.launchDialog.modsFolder = files.modsFolder;
+    state.launchDialog.additionalFilesFolder = files.additionalFilesFolder;
+    const savedLaunchSettings = normalizeLauncherSettings(wad.launcherSettings || {});
+    state.launchDialog.selectedMods = mergeSelectionWithFiles(savedLaunchSettings.selectedMods || [], files.globalMods);
+    state.launchDialog.selectedAdditionalFiles = savedLaunchSettings.selectedAdditionalFiles?.length
+      ? mergeSelectionWithFiles(savedLaunchSettings.selectedAdditionalFiles, files.additionalFiles)
+      : mergeSelectionWithFiles(files.additionalFiles.map((file) => file.path), files.additionalFiles);
+    state.launchDialog.sectionOrder = normalizeLaunchSectionOrder(savedLaunchSettings.sectionOrder || state.launchDialog.sectionOrder);
+  } catch (error) {
+    console.error(error);
+    body.innerHTML = `<div class="launch-warning"><strong>Could not scan launch files:</strong> ${escapeHtml(error.message || 'Unknown error')}</div>`;
+  }
+  rerenderLaunchDialogBody(wad.id);
+}
+
+async function launchWad(wadId) {
+  const wad = state.app.wads.find((entry) => entry.id === wadId);
+  if (!wad) return;
+  saveLauncherSettingsForWad(wad.id, { persist: true });
+  const payload = buildLaunchPayload(wad);
+  const errors = validateLaunchPayload(payload);
+  if (errors.length) {
+    showAlert('error', errors[0]);
+    return;
+  }
+  const button = document.getElementById('launchDialogLaunchButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Launching...';
+  }
+  try {
+    const response = await fetch('/api/launch-game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Launch failed.');
+    document.getElementById('launchDialog')?.close();
+    showAlert('success', `Launched ${wad.title || 'WAD'}. Death monitor is watching terminal output.`);
+  } catch (error) {
+    showAlert('error', error.message || 'Launch failed. Check the local server terminal.');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Launch';
+    }
+  }
+}
+
+function getScannedIwadLaunchOptions() {
+  return (state.app?.wads || [])
+    .filter((entry) => String(entry?.iwadPath || '').trim())
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.title || entry.iwadFileName || entry.iwadScanKey || entry.iwad || 'Scanned IWAD',
+      path: String(entry.iwadPath || '').trim(),
+      key: entry.iwadScanKey || '',
+    }))
+    .filter((entry, index, array) => entry.path && array.findIndex((other) => normalizePathForCompare(other.path) === normalizePathForCompare(entry.path)) === index)
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function getTestWadDialogElements() {
+  return {
+    dialog: document.getElementById('testWadDialog'),
+    status: document.getElementById('testWadStatus'),
+    wadSelect: document.getElementById('testWadSelect'),
+    iwadSelect: document.getElementById('testIwadSelect'),
+    preview: document.getElementById('testWadCommandPreview'),
+    launchButton: document.getElementById('testWadLaunchButton'),
+  };
+}
+
+async function openTestWadDialog() {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  const els = getTestWadDialogElements();
+  if (!els.dialog || !els.status || !els.wadSelect || !els.iwadSelect || !els.preview || !els.launchButton) return;
+
+  els.status.textContent = 'Scanning unassociated PWAD/PK3 files...';
+  els.wadSelect.innerHTML = '<option value="">Scanning...</option>';
+  els.iwadSelect.innerHTML = '';
+  els.preview.value = '';
+  els.launchButton.disabled = true;
+  els.dialog.showModal();
+
+  const iwadOptions = getScannedIwadLaunchOptions();
+  if (iwadOptions.length) {
+    els.iwadSelect.innerHTML = iwadOptions.map((entry, index) => `<option value="${escapeHtml(entry.path)}" ${index === 0 ? 'selected' : ''}>${escapeHtml(entry.label)} — ${escapeHtml(entry.path)}</option>`).join('');
+  } else {
+    els.iwadSelect.innerHTML = '<option value="">No scanned IWADs found</option>';
+  }
+
+  if (!settings.defaultPwadPath) {
+    els.status.textContent = 'Set Default PWAD path in Settings first.';
+    updateTestWadPreview();
+    return;
+  }
+
+  try {
+    const associatedFiles = getAssociatedModFiles();
+    const associatedPaths = associatedFiles.map((entry) => entry.path).filter(Boolean);
+    const response = await fetch('/api/scan-pwads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pwadFolder: settings.defaultPwadPath, associatedPaths, associatedFiles }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'PWAD scan failed.');
+    const found = Array.isArray(payload.found) ? payload.found : [];
+    if (!found.length) {
+      els.wadSelect.innerHTML = '<option value="">No unassociated PWAD/PK3 files found</option>';
+      els.status.textContent = 'No unassociated PWAD/PK3 files were found in the Default PWAD path.';
+      updateTestWadPreview();
+      return;
+    }
+    els.wadSelect.innerHTML = found.map((file, index) => {
+      const label = `${file.relativePath || file.fileName}${Number(file.mapCount) ? ` [${file.mapCount} maps]` : ''}`;
+      return `<option value="${escapeHtml(file.path)}" ${index === 0 ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+    els.status.textContent = `Found ${found.length} unassociated PWAD/PK3 file${found.length === 1 ? '' : 's'}. Pick one and launch it without adding a WAD card.`;
+    updateTestWadPreview();
+  } catch (error) {
+    console.error(error);
+    els.wadSelect.innerHTML = '<option value="">Scan failed</option>';
+    els.status.textContent = error.message || 'Could not scan PWAD folder.';
+    updateTestWadPreview();
+  }
+}
+
+function buildTestWadLaunchPayload() {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  const els = getTestWadDialogElements();
+  const executable = settings.gameExecutable;
+  const pwadPath = els.wadSelect?.value || '';
+  const iwadPath = els.iwadSelect?.value || '';
+  const saveDir = settings.defaultRootSaveFolder || '';
+  const shotDir = settings.defaultScreenshotFolder || settings.defaultRootSaveFolder || '';
+  return {
+    executable,
+    iwadPath,
+    iwadSourceLabel: 'Test WAD IWAD selector',
+    pwadPath,
+    saveDir,
+    shotDir,
+    isIwadLaunch: false,
+    assumeFlatpak: String(executable || '').toLowerCase().endsWith('.sh'),
+  };
+}
+
+function validateTestWadLaunchPayload(payload) {
+  const errors = [];
+  if (!payload.executable) errors.push('Set Game Executable in Settings first.');
+  if (!payload.pwadPath) errors.push('Select an unassociated PWAD/PK3 file.');
+  if (!payload.iwadPath) errors.push('Scan IWADs first, then select the IWAD this test WAD should use.');
+  if (!payload.saveDir) errors.push('Set Default root save folder in Settings first.');
+  if (!payload.shotDir) errors.push('Set Default Screenshot folder or Default root save folder in Settings first.');
+  return errors;
+}
+
+function updateTestWadPreview() {
+  const els = getTestWadDialogElements();
+  if (!els.preview || !els.launchButton) return;
+  const payload = buildTestWadLaunchPayload();
+  const errors = validateTestWadLaunchPayload(payload);
+  els.preview.value = buildLaunchCommandPreviewFromPayload(payload);
+  els.launchButton.disabled = errors.length > 0;
+  const warning = document.getElementById('testWadWarnings');
+  if (warning) {
+    warning.innerHTML = errors.length ? `<div class="launch-warning"><strong>Needs attention before launch:</strong><ul>${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>` : '';
+  }
+}
+
+async function launchTestWad() {
+  const payload = buildTestWadLaunchPayload();
+  const errors = validateTestWadLaunchPayload(payload);
+  if (errors.length) {
+    showAlert('error', errors[0]);
+    return;
+  }
+  const els = getTestWadDialogElements();
+  if (els.launchButton) {
+    els.launchButton.disabled = true;
+    els.launchButton.textContent = 'Launching...';
+  }
+  try {
+    const response = await fetch('/api/launch-game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Launch failed.');
+    els.dialog?.close();
+    const selected = els.wadSelect?.selectedOptions?.[0]?.textContent || 'test WAD';
+    showAlert('success', `Launched ${selected}.`);
+  } catch (error) {
+    showAlert('error', error.message || 'Launch failed. Check the local server terminal.');
+  } finally {
+    if (els.launchButton) {
+      els.launchButton.disabled = false;
+      els.launchButton.textContent = 'Launch';
+    }
+  }
+}
+
+
 window.appActions = {
   openWad: (wadId) => showWadDetail(wadId),
   goStats: () => { activateNav('stats'); showView('stats'); },
@@ -4622,6 +5365,13 @@ window.appActions = {
   showLibraryTxtInfo,
   showAllWadTags,
   openTitlepic: openTitlepicPopup,
+  openLaunchDialog,
+  toggleLaunchFile,
+  moveLaunchFile,
+  moveLaunchSection,
+  openTestWadDialog,
+  updateTestWadPreview,
+  launchTestWad,
   editWad: openEditWadDialog,
   refreshWadMetadata: refreshWadMetadataFromDisk,
   associateWadFile,
@@ -4691,6 +5441,9 @@ window.appActions = {
       defaultScreenshotFolder: formData.get('defaultScreenshotFolder'),
       defaultIwadPath: formData.get('defaultIwadPath'),
       defaultIwadFolder: formData.get('defaultIwadFolder'),
+      gameExecutable: formData.get('gameExecutable'),
+      modsFolder: formData.get('modsFolder'),
+      additionalFilesFolder: formData.get('additionalFilesFolder'),
       webdavEnabled: formData.get('webdavEnabled') === 'on',
       webdavUrl: formData.get('webdavUrl'),
       webdavRemotePath: formData.get('webdavRemotePath'),
@@ -4704,6 +5457,8 @@ window.appActions = {
       syncMetadataTxt: formData.get('syncMetadataTxt') === 'on',
       syncTitlepics: formData.get('syncTitlepics') === 'on',
       syncScreenshots: formData.get('syncScreenshots') === 'on',
+      syncMods: formData.get('syncMods') === 'on',
+      syncAdditionalFiles: formData.get('syncAdditionalFiles') === 'on',
       syncDatabase: formData.get('syncDatabase') === 'on',
       deleteAssociatedFilesOnWadDelete: formData.get('deleteAssociatedFilesOnWadDelete') === 'on',
       checkMissingDeletedFilesOnRefreshAll: formData.get('checkMissingDeletedFilesOnRefreshAll') === 'on',

@@ -1,17 +1,16 @@
-# Doom Run Tracker 1.3.5
+# Doom Run Tracker 1.5.2
 
-## v1.3.5 Home dashboard
+## v1.5.2 Launcher file discovery and saved loadouts
 
-This major version adds a new default Home screen so the app opens on a useful dashboard instead of dropping straight into the library.
+Adds full launch configuration for tracked WADs:
 
-Home includes:
-
-- Continue Playing cards, prioritising WADs marked Currently Playing.
-- Collection snapshot with tracked WADs, current/completed/planned counts, maps logged, completion percentage, tracked time, and kills per minute.
-- Medal haul with Gold/Silver/Bronze totals.
-- Total demons slain, items collected, and secrets found.
-- Recently Played and Recently Added panels.
-- Quick buttons to jump into common library filters such as play state, WAD type, and popular tags.
+- Play popup can select global mod files from the Mods folder.
+- Play popup can select WAD-specific files from the Additional Files folder.
+- Additional files default to selected when found, making widescreen patches easy to apply.
+- Each Mods and Additional Files list can be reordered with up/down priority buttons.
+- Overall section order can be changed between Map file, Additional files, and Mod files.
+- Command preview now shows the final `-file` order before launch.
+- Launch backend accepts multiple `-file` entries while keeping death monitoring enabled.
 
 ## v1.2.1 Library quick filters
 - Click a WAD card play state to filter to that state.

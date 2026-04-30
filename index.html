@@ -18,7 +18,7 @@
           <div class="brand-mark">D</div>
           <div>
             <h1>Doom Run Tracker</h1>
-            <p>1.3.5 Release</p>
+            <p>1.5.2 Release</p>
           </div>
         </div>
 
@@ -62,7 +62,7 @@
         <div class="home-dashboard section-stack">
           <section class="home-hero">
             <div>
-              <p class="eyebrow">Doom Run Tracker 1.3.5</p>
+              <p class="eyebrow">Doom Run Tracker 1.5.2</p>
               <h3>Your Doom command center</h3>
               <p class="muted-text">Loading dashboard…</p>
             </div>
@@ -87,6 +87,11 @@
         <button type="button" class="secondary-button" id="chooseNewPwadButton">Choose PWAD/PK3 + Auto-Fill Metadata</button>
         <span id="newWadMetadataStatus" class="field-help">No PWAD/PK3 selected yet. You can save manually, or choose a mod file to auto-fill fields.</span>
       </div>
+      <label class="full-width checkbox-line folder-create-toggle">
+        <input name="createMissingFolders" type="checkbox" />
+        <span>Automatically create missing save, screenshot, and additional files folders when this WAD is saved</span>
+      </label>
+      <p class="field-help full-width">Save/screenshots use the WAD title. Additional files uses the WAD/PK3 filename, such as <code>eternal/</code> for <code>eternal.wad</code>. Folders are only created after you click Save.</p>
       <div class="form-grid">
         <label>
           Title
@@ -190,6 +195,11 @@
           Notes
           <textarea name="notes" rows="4" placeholder="Optional WAD notes, compatibility quirks, mod stack, or playthrough notes"></textarea>
         </label>
+        <label class="full-width checkbox-line folder-create-toggle">
+          <input name="createMissingFolders" type="checkbox" />
+          <span>Automatically create missing save, screenshot, and additional files folders when this WAD is saved</span>
+        </label>
+        <p class="field-help full-width">Save/screenshots use the WAD title. Additional files uses the WAD/PK3 filename. Existing custom folders are left alone.</p>
         <label class="full-width checkbox-line">
           <input name="excludeFromRefreshAll" type="checkbox" />
           <span>Exclude this WAD from Refresh All</span>
@@ -343,6 +353,52 @@
   </dialog>
 
 
+
+  <dialog id="testWadDialog" class="modal">
+    <div class="modal-card launch-modal-card">
+      <div class="modal-head">
+        <h3>Test WAD</h3>
+        <button type="button" class="ghost-button close-modal" data-close="testWadDialog">✕</button>
+      </div>
+      <div class="section-stack">
+        <p class="muted">Launch an unassociated PWAD/PK3 from your Default PWAD path without adding it to the database first. Good for testing a WAD before deciding if it deserves a card.</p>
+        <div id="testWadStatus" class="upload-callout">Ready.</div>
+        <label class="full-span">Unassociated WAD/PK3
+          <select id="testWadSelect" onchange="window.appActions.updateTestWadPreview()"></select>
+        </label>
+        <label class="full-span">IWAD
+          <select id="testIwadSelect" onchange="window.appActions.updateTestWadPreview()"></select>
+        </label>
+        <div id="testWadWarnings"></div>
+        <label class="full-span">Command line preview
+          <textarea id="testWadCommandPreview" class="command-preview" readonly rows="6"></textarea>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <div class="modal-actions-inner">
+          <button type="button" class="secondary-button close-modal" data-close="testWadDialog">Close</button>
+          <button type="button" class="primary-button" id="testWadLaunchButton" onclick="window.appActions.launchTestWad()">Launch</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="launchDialog" class="modal">
+    <div class="modal-card launch-modal-card">
+      <div class="modal-head">
+        <h3 id="launchDialogTitle">Launch WAD</h3>
+        <button type="button" class="ghost-button close-modal" data-close="launchDialog">✕</button>
+      </div>
+      <div id="launchDialogBody" class="section-stack"></div>
+      <div class="modal-actions">
+        <div class="modal-actions-inner">
+          <button type="button" class="secondary-button close-modal" data-close="launchDialog">Close</button>
+          <button type="button" class="primary-button" id="launchDialogLaunchButton">Launch</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="screenshotDialog" class="modal screenshot-modal">
     <div class="modal-card screenshot-modal-card">
       <div class="modal-head">
@@ -363,6 +419,6 @@
     </div>
   </template>
 
-  <script src="app.js?v=135"></script>
+  <script src="app.js?v=152"></script>
 </body>
 </html>
