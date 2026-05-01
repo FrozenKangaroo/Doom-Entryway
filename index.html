@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Doom Run Tracker</title>
+  <title>Doom Entryway</title>
+  <link rel="icon" type="image/png" href="doom-entryway-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -15,10 +16,10 @@
     <aside class="sidebar">
       <div>
         <div class="brand">
-          <div class="brand-mark">D</div>
+          <div class="brand-mark"><img src="doom-entryway-icon.png" alt="Doom Entryway icon" class="brand-mark-image" /></div>
           <div>
-            <h1>Doom Run Tracker</h1>
-            <p>1.5.5 Release</p>
+            <h1>Doom Entryway</h1>
+            <p>1.5.7 Release</p>
           </div>
         </div>
 
@@ -27,6 +28,7 @@
           <button class="nav-button" data-view="library">Library</button>
           <button class="nav-button" data-view="stats">Overall Stats</button>
           <button class="nav-button" data-view="settings">Settings</button>
+          <button class="nav-button" data-view="debug">Log / Debug</button>
           <button class="nav-button" data-view="about">About</button>
         </nav>
       </div>
@@ -62,7 +64,7 @@
         <div class="home-dashboard section-stack">
           <section class="home-hero">
             <div>
-              <p class="eyebrow">Doom Run Tracker 1.5.5</p>
+              <p class="eyebrow">Doom Entryway 1.5.7</p>
               <h3>Your Doom command center</h3>
               <p class="muted-text">Loading dashboard…</p>
             </div>
@@ -73,6 +75,7 @@
       <section id="wadDetailView" class="view"></section>
       <section id="statsView" class="view"></section>
       <section id="settingsView" class="view"></section>
+      <section id="debugView" class="view"></section>
       <section id="aboutView" class="view"></section>
     </main>
   </div>
@@ -419,6 +422,6 @@
     </div>
   </template>
 
-  <script src="app.js?v=155"></script>
+  <script src="app.js?v=156"></script>
 </body>
 </html>

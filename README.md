@@ -1,6 +1,6 @@
-# Doom Run Tracker 1.5.5
+# Doom Entryway 1.5.7
 
-## v1.5.5 Death tracking persistence fix
+## v1.5.7 Doom Entryway rename + state selector fix
 
 Fixes a death tracking race where refreshing latest `.zds` stats from a still-open browser page could overwrite deaths that were counted by the live terminal monitor.
 
@@ -17,7 +17,7 @@ Fixes a death tracking race where refreshing latest `.zds` stats from a still-op
 - README and About version text updated to 1.2.1.
 
 
-Doom Run Tracker is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
+Doom Entryway is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
 
 ## Start
 

@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.5";
+const APP_VERSION = "1.5.7";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -38,6 +38,7 @@ const state = {
   databaseReady: false,
   pendingNewWadMetadata: null,
   launchDialog: { wadId: '', globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '' },
+  debug: { lines: [], logPath: '', loadedAt: '', loading: false, error: '' },
 };
 
 const pageTitle = document.getElementById('pageTitle');
@@ -47,6 +48,7 @@ const libraryView = document.getElementById('libraryView');
 const wadDetailView = document.getElementById('wadDetailView');
 const statsView = document.getElementById('statsView');
 const settingsView = document.getElementById('settingsView');
+const debugView = document.getElementById('debugView');
 const aboutView = document.getElementById('aboutView');
 const alertsEl = document.getElementById('alerts');
 const wadDialog = document.getElementById('wadDialog');
@@ -65,7 +67,7 @@ async function initApp() {
   wireEvents();
   activateNav(state.currentView === 'home' ? 'home' : state.currentView);
   if (state.currentView === 'home') {
-    [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view?.classList.remove('active'));
+    [homeView, libraryView, wadDetailView, statsView, settingsView, debugView, aboutView].forEach((view) => view?.classList.remove('active'));
     homeView?.classList.add('active');
     pageTitle.textContent = 'Home';
     pageSubtitle.textContent = 'At-a-glance progress, recent play, and quick launch points.';
@@ -494,7 +496,7 @@ function updateComputedHints() {
 
 function showView(viewName) {
   state.currentView = viewName;
-  [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
+  [homeView, libraryView, wadDetailView, statsView, settingsView, debugView, aboutView].forEach((view) => view.classList.remove('active'));
 
   if (viewName === 'home') {
     homeView.classList.add('active');
@@ -512,9 +514,14 @@ function showView(viewName) {
     settingsView.classList.add('active');
     pageTitle.textContent = 'Settings';
     pageSubtitle.textContent = 'Default paths for new WAD/PK3 entries and future automation.';
+  } else if (viewName === 'debug') {
+    debugView.classList.add('active');
+    pageTitle.textContent = 'Log / Debug';
+    pageSubtitle.textContent = 'Server, launcher, sync, and Doom output history from this local server.';
+    loadDebugLogs();
   } else if (viewName === 'about') {
     aboutView.classList.add('active');
-    pageTitle.textContent = 'About Doom Run Tracker';
+    pageTitle.textContent = 'About Doom Entryway';
     pageSubtitle.textContent = 'Feature overview and release information.';
   }
   render();
@@ -523,7 +530,7 @@ function showView(viewName) {
 function showWadDetail(wadId) {
   state.currentWadId = wadId;
   state.currentView = 'wad';
-  [homeView, libraryView, wadDetailView, statsView, settingsView, aboutView].forEach((view) => view.classList.remove('active'));
+  [homeView, libraryView, wadDetailView, statsView, settingsView, debugView, aboutView].forEach((view) => view.classList.remove('active'));
   wadDetailView.classList.add('active');
   const wad = getCurrentWad();
   if (wad) {
@@ -542,6 +549,7 @@ function render() {
     ['wad', renderWadDetail],
     ['stats', renderStats],
     ['settings', renderSettings],
+    ['debug', renderDebug],
     ['about', renderAbout],
   ];
   for (const [name, renderer] of renderers) {
@@ -567,7 +575,7 @@ function renderHomeFallback(error = null) {
     <div class="home-dashboard section-stack">
       <section class="home-hero">
         <div>
-          <p class="eyebrow">Doom Run Tracker ${escapeHtml(APP_VERSION)}</p>
+          <p class="eyebrow">Doom Entryway ${escapeHtml(APP_VERSION)}</p>
           <h3>Your Doom command center</h3>
           <p class="muted-text">Home dashboard fallback loaded. The app is running, and you can jump into the library or stats from here.</p>
           ${error ? `<p class="alert error" style="margin-top:0.8rem;">Home dashboard error: ${escapeHtml(error.message || error)}</p>` : ''}
@@ -589,6 +597,72 @@ function renderHomeFallback(error = null) {
         </div>
       </section>
     </div>`;
+}
+
+function renderDebug() {
+  if (!debugView || state.currentView !== 'debug') return;
+  const lines = Array.isArray(state.debug.lines) ? state.debug.lines : [];
+  const body = lines.length
+    ? lines.map((line) => escapeHtml(line)).join('\n')
+    : 'No log lines yet. Launch the app, refresh stats, sync, or start Doom and this page will fill in like a mini terminal.';
+  debugView.innerHTML = `
+    <section class="stat-shell debug-shell">
+      <div class="section-title-row">
+        <div>
+          <h3>Terminal Log History</h3>
+          <p class="muted-text">Showing recent lines from the local server log${state.debug.logPath ? ` at <code>${escapeHtml(state.debug.logPath)}</code>` : ''}.</p>
+        </div>
+        <div class="button-row">
+          <button type="button" class="secondary-button" onclick="window.appActions.refreshDebugLogs()">Refresh</button>
+          <button type="button" class="danger-button" onclick="window.appActions.clearDebugLogs()">Clear</button>
+        </div>
+      </div>
+      ${state.debug.error ? `<div class="alert error">${escapeHtml(state.debug.error)}</div>` : ''}
+      <div class="debug-toolbar muted-text">
+        <span>${lines.length} line${lines.length === 1 ? '' : 's'}</span>
+        <span>${state.debug.loadedAt ? `Last loaded ${escapeHtml(state.debug.loadedAt)}` : 'Not loaded yet'}</span>
+      </div>
+      <pre class="debug-log-box" id="debugLogBox">${body}</pre>
+    </section>`;
+  const box = document.getElementById('debugLogBox');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+async function loadDebugLogs() {
+  if (state.debug.loading) return;
+  state.debug.loading = true;
+  try {
+    const response = await fetch('/api/logs?limit=900');
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not load debug logs.');
+    state.debug.lines = Array.isArray(payload.lines) ? payload.lines : [];
+    state.debug.logPath = payload.logPath || '';
+    state.debug.loadedAt = new Date().toLocaleTimeString();
+    state.debug.error = '';
+  } catch (error) {
+    state.debug.error = error.message || String(error);
+  } finally {
+    state.debug.loading = false;
+    if (state.currentView === 'debug') renderDebug();
+  }
+}
+
+async function clearDebugLogs() {
+  const ok = confirm('Clear the visible debug log history? This also clears doom_entryway_debug.log.');
+  if (!ok) return;
+  try {
+    const response = await fetch('/api/clear-logs', { method: 'POST' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not clear debug logs.');
+    state.debug.lines = Array.isArray(payload.lines) ? payload.lines : [];
+    state.debug.logPath = payload.logPath || state.debug.logPath || '';
+    state.debug.loadedAt = new Date().toLocaleTimeString();
+    state.debug.error = '';
+    renderDebug();
+  } catch (error) {
+    state.debug.error = error.message || String(error);
+    renderDebug();
+  }
 }
 
 function renderAlerts() {
@@ -628,7 +702,7 @@ function renderHome() {
   <div class="home-dashboard section-stack">
     <section class="home-hero">
       <div>
-        <p class="eyebrow">Doom Run Tracker ${escapeHtml(APP_VERSION)}</p>
+        <p class="eyebrow">Doom Entryway ${escapeHtml(APP_VERSION)}</p>
         <h3>Your Doom command center</h3>
         <p class="muted-text">Jump back into current WADs, check collection progress, and spot what changed without digging through the library.</p>
       </div>
@@ -1073,9 +1147,15 @@ function renderWadDetail() {
   });
 
   const wadPlayState = document.getElementById('wadPlayState');
-  wadPlayState?.addEventListener('change', (event) => {
-    wad.playState = event.target.value;
-    saveState();
+  wadPlayState?.addEventListener('change', async (event) => {
+    const newPlayState = event.target.value;
+    const liveWad = state.app.wads.find((entry) => entry.id === wad.id);
+    if (!liveWad) return;
+    liveWad.playState = newPlayState;
+    liveWad.updatedAt = new Date().toISOString();
+    await saveState();
+    const refreshedWad = state.app.wads.find((entry) => entry.id === wad.id);
+    if (refreshedWad) refreshedWad.playState = newPlayState;
     render();
   });
 
@@ -1500,7 +1580,7 @@ function renderSettings() {
           <div class="section-bar compact-section-bar">
             <div>
               <h3>Launch Settings</h3>
-              <p class="muted">Early launcher groundwork. These paths will be used when Doom Tracker starts launching WADs directly.</p>
+              <p class="muted">Early launcher groundwork. These paths will be used when Doom Entryway starts launching WADs directly.</p>
             </div>
           </div>
           <label>
@@ -1532,7 +1612,7 @@ function renderSettings() {
             <input type="checkbox" name="checkMissingDeletedFilesOnRefreshAll" ${settings.checkMissingDeletedFilesOnRefreshAll ? 'checked' : ''} />
             Check for missing and moved files during Refresh All
           </span>
-          <span class="field-help">When Refresh All runs, Doom Tracker verifies linked WAD/PK3, IWAD, save, screenshot, metadata TXT, and titlepic files/folders. Missing files are searched for under their configured root folders; deleted files are removed from the database and queued for WebDAV cleanup.</span>
+          <span class="field-help">When Refresh All runs, Doom Entryway verifies linked WAD/PK3, IWAD, save, screenshot, metadata TXT, and titlepic files/folders. Missing files are searched for under their configured root folders; deleted files are removed from the database and queued for WebDAV cleanup.</span>
         </label>
 
         <section class="settings-subsection danger-zone-inline">
@@ -1569,7 +1649,7 @@ function renderSettings() {
         <label>
           WebDAV server URL
           <input name="webdavUrl" placeholder="e.g. https://nas.example.com:5006/doom-tracker" value="${escapeHtml(settings.webdavUrl)}" />
-          <span class="field-help">Use the base WebDAV folder URL that Doom Tracker should sync to.</span>
+          <span class="field-help">Use the base WebDAV folder URL that Doom Entryway should sync to.</span>
         </label>
         <label>
           Remote sync folder/path
@@ -1597,7 +1677,7 @@ function renderSettings() {
           <div class="section-bar compact-section-bar">
             <div>
               <h3>What to sync</h3>
-              <p class="muted">Choose which Doom Tracker folders and files should be included in WebDAV sync.</p>
+              <p class="muted">Choose which Doom Entryway folders and files should be included in WebDAV sync.</p>
             </div>
           </div>
           <div class="settings-toggle-grid">
@@ -1623,7 +1703,7 @@ function renderSettings() {
           </div>
           <label class="checkbox-line">
             <span><input type="checkbox" name="webdavHashCheckBeforeOverwrite" ${settings.webdavHashCheckBeforeOverwrite ? 'checked' : ''} /> Hash check before overwriting files</span>
-            <span class="field-help">Slower but more accurate. Doom Tracker only hashes when normal size/time checks say a file may need upload/download. If both hashes match, the file is skipped.</span>
+            <span class="field-help">Slower but more accurate. Doom Entryway only hashes when normal size/time checks say a file may need upload/download. If both hashes match, the file is skipped.</span>
           </label>
         </section>
         <div id="webdavTestResult" class="field-help"></div>
@@ -1648,9 +1728,9 @@ function renderAbout() {
   aboutView.innerHTML = `
   <div class="section-stack">
     <section class="about-shell">
-      <h3>Doom Run Tracker ${APP_VERSION}</h3>
+      <h3>Doom Entryway ${APP_VERSION}</h3>
       <p class="muted">Initial stable release: <strong>${APP_VERSION}</strong></p>
-      <p>Doom Run Tracker is a local-first tracker for DOOM, DOOM II, Final DOOM, IWADs, PWADs, PK3s, runs, map stats, screenshots, metadata, and WebDAV sync.</p>
+      <p>Doom Entryway is a local-first tracker for DOOM, DOOM II, Final DOOM, IWADs, PWADs, PK3s, runs, map stats, screenshots, metadata, and WebDAV sync.</p>
     </section>
 
     <section class="about-shell">
@@ -4095,7 +4175,7 @@ function exportDatabase() {
   const payload = {
     app: state.app,
     exportedAt: new Date().toISOString(),
-    appName: 'Doom Run Tracker',
+    appName: 'Doom Entryway',
     version: APP_VERSION,
   };
 
@@ -4747,7 +4827,7 @@ async function purgeWebdavFromSettings() {
     setTimeout(() => window.appActions.showSettingsTab('webdav'), 0);
     return;
   }
-  const ok = confirm('Purge WebDAV sync folder?\n\nThis permanently deletes the Doom Tracker sync folders from the configured WebDAV location. This cannot be undone.');
+  const ok = confirm('Purge WebDAV sync folder?\n\nThis permanently deletes the Doom Entryway sync folders from the configured WebDAV location. This cannot be undone.');
   if (!ok) return;
   try {
     await saveState();
@@ -5145,8 +5225,8 @@ function rerenderLaunchDialogBody(wadId) {
   const launchState = getActiveLaunchSelection(wad.id);
   body.innerHTML = `
     <p class="muted">Choose global mods and WAD-specific additional files, set priority inside each section, then choose the overall section load order.</p>
-    <div class="upload-callout">Death monitor enabled: Doom Tracker will watch terminal output for map headers like <code>MAP01</code> / <code>E1M1</code> and obituary lines, then add 1 death to that map.</div>
-    ${payload.assumeFlatpak ? '<div class="upload-callout">Shell script executable detected, so Doom Tracker will launch it through <code>flatpak-spawn --host</code>.</div>' : ''}
+    <div class="upload-callout">Death monitor enabled: Doom Entryway will watch terminal output for map headers like <code>MAP01</code> / <code>E1M1</code> and obituary lines, then add 1 death to that map.</div>
+    ${payload.assumeFlatpak ? '<div class="upload-callout">Shell script executable detected, so Doom Entryway will launch it through <code>flatpak-spawn --host</code>.</div>' : ''}
     ${payload.iwadSourceLabel ? `<div class="upload-callout">IWAD resolved from: <strong>${escapeHtml(payload.iwadSourceLabel)}</strong></div>` : ''}
     <div id="launchDialogErrors">${errors.length ? `<div class="launch-warning"><strong>Needs attention before launch:</strong><ul>${errors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>` : ''}</div>
     <section class="summary-card launch-picker-card">
@@ -5478,6 +5558,8 @@ async function launchTestWad() {
 
 
 window.appActions = {
+  refreshDebugLogs: loadDebugLogs,
+  clearDebugLogs,
   openWad: (wadId) => showWadDetail(wadId),
   goStats: () => { activateNav('stats'); showView('stats'); },
   openLibraryPreset,

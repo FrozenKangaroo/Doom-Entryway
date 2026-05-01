@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local server for Doom Run Tracker.
+"""Local server for Doom Entryway.
 
 Run:
     python local_server.py
@@ -46,7 +46,10 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = ROOT / "doom_tracker_database.json"
 SETTINGS_PATH = ROOT / "settings.json"
-APP_VERSION = "1.5.5"
+DEBUG_LOG_PATH = ROOT / "doom_entryway_debug.log"
+MAX_MEMORY_LOG_LINES = 1200
+MAX_LOG_FILE_BYTES = 2_000_000
+APP_VERSION = "1.5.7"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -65,6 +68,65 @@ SYNC_ROOT_FOLDERS = {
     "additionalFiles": "AdditionalFiles",
     "database": "Database",
 }
+
+
+DEBUG_LOG_LINES: list[str] = []
+
+
+def _trim_debug_log_file() -> None:
+    try:
+        if not DEBUG_LOG_PATH.exists() or DEBUG_LOG_PATH.stat().st_size <= MAX_LOG_FILE_BYTES:
+            return
+        data = DEBUG_LOG_PATH.read_bytes()[-MAX_LOG_FILE_BYTES:]
+        DEBUG_LOG_PATH.write_bytes(data)
+    except Exception:
+        pass
+
+
+def _append_debug_log(message: str, category: str = "APP") -> None:
+    from datetime import datetime, timezone
+    text = str(message or "").rstrip()
+    if not text:
+        return
+    stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    for part in text.splitlines() or [text]:
+        line = f"[{stamp}] [{category}] {part[:2000]}"
+        DEBUG_LOG_LINES.append(line)
+        if len(DEBUG_LOG_LINES) > MAX_MEMORY_LOG_LINES:
+            del DEBUG_LOG_LINES[:len(DEBUG_LOG_LINES) - MAX_MEMORY_LOG_LINES]
+        try:
+            with DEBUG_LOG_PATH.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+            _trim_debug_log_file()
+        except Exception:
+            pass
+
+
+def _read_debug_logs(limit: int = 700) -> dict:
+    limit = max(50, min(int(limit or 700), 2000))
+    lines: list[str] = []
+    try:
+        if DEBUG_LOG_PATH.exists():
+            with DEBUG_LOG_PATH.open("rb") as handle:
+                size = DEBUG_LOG_PATH.stat().st_size
+                handle.seek(max(0, size - 512_000))
+                data = handle.read().decode("utf-8", errors="replace")
+            lines.extend(data.splitlines())
+    except Exception as exc:
+        lines.append(f"[log-read-error] {exc}")
+    if DEBUG_LOG_LINES:
+        existing = set(lines[-MAX_MEMORY_LOG_LINES:])
+        lines.extend(line for line in DEBUG_LOG_LINES if line not in existing)
+    return {"lines": lines[-limit:], "logPath": str(DEBUG_LOG_PATH), "maxLines": limit}
+
+
+def _clear_debug_logs() -> None:
+    DEBUG_LOG_LINES.clear()
+    try:
+        DEBUG_LOG_PATH.write_text("", encoding="utf-8")
+    except Exception:
+        pass
+    _append_debug_log("Debug log cleared.", "APP")
 
 
 
@@ -144,6 +206,8 @@ def _launch_game(payload: dict) -> dict:
         command += ["-file"] + [str(path) for path in launch_files]
     command += ["-savedir", str(savedir), "-shotdir", str(shotdir)]
 
+    _append_debug_log("Launching game: " + " ".join(command), "LAUNCH")
+
     proc = subprocess.Popen(
         command,
         cwd=str(exe_path.parent),
@@ -210,6 +274,8 @@ def _monitor_doom_output_for_deaths(proc: subprocess.Popen, wad_id: str) -> None
         return
     for raw_line in stream:
         line = raw_line.strip()
+        if line:
+            _append_debug_log(line, "DOOM")
         if not line:
             continue
         map_match = _MAP_HEADER_RE.match(line)
@@ -220,6 +286,7 @@ def _monitor_doom_output_for_deaths(proc: subprocess.Popen, wad_id: str) -> None
             try:
                 _increment_map_death_count(wad_id, current_map, line)
             except Exception as exc:
+                _append_debug_log(f"Death monitor failed: {exc}", "ERROR")
                 print(f"Doom Tracker death monitor failed: {exc}", flush=True)
     try:
         proc.wait(timeout=1)
@@ -424,7 +491,7 @@ def _save_settings(settings: dict) -> None:
     payload = {
         "settings": settings,
         "savedAt": datetime.now(timezone.utc).isoformat(),
-        "appName": "Doom Run Tracker",
+        "appName": "Doom Entryway",
         "version": APP_VERSION,
     }
     tmp_path = SETTINGS_PATH.with_suffix(".json.tmp")
@@ -517,7 +584,7 @@ def _save_database(app: dict) -> None:
     payload = {
         "app": database_app,
         "savedAt": datetime.now(timezone.utc).isoformat(),
-        "appName": "Doom Run Tracker",
+        "appName": "Doom Entryway",
         "version": APP_VERSION,
     }
 
@@ -3612,10 +3679,21 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
         self.send_header("Expires", "0")
         super().end_headers()
 
+    def log_message(self, format: str, *args) -> None:
+        _append_debug_log(format % args, "HTTP")
+
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler name
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             _json_response(self, 200, {"ok": True, "root": str(ROOT), "databasePath": str(DATABASE_PATH), "settingsPath": str(SETTINGS_PATH)})
+            return
+        if parsed.path == "/api/logs":
+            try:
+                from urllib.parse import parse_qs
+                limit = int(parse_qs(parsed.query).get("limit", ["700"])[0] or 700)
+                _json_response(self, 200, {"ok": True, **_read_debug_logs(limit)})
+            except Exception as exc:
+                _json_response(self, 500, {"ok": False, "error": str(exc)})
             return
         if parsed.path == "/api/database":
             try:
@@ -3958,6 +4036,14 @@ class DoomTrackerHandler(SimpleHTTPRequestHandler):
                 _json_response(self, 400, {"error": str(exc)})
             return
 
+        if parsed.path == "/api/clear-logs":
+            try:
+                _clear_debug_logs()
+                _json_response(self, 200, {"ok": True, **_read_debug_logs(200)})
+            except Exception as exc:
+                _json_response(self, 400, {"ok": False, "error": str(exc)})
+            return
+
         if parsed.path != "/api/refresh-stats":
             _json_response(self, 404, {"error": "Unknown API endpoint."})
             return
@@ -4000,7 +4086,8 @@ def main() -> None:
         _save_database(_empty_database())
     os.chdir(ROOT)
     httpd = ThreadingHTTPServer((HOST, PORT), DoomTrackerHandler)
-    print(f"Doom Run Tracker local server running at http://localhost:{PORT}")
+    _append_debug_log(f"Doom Entryway {APP_VERSION} starting at http://{HOST}:{PORT}", "APP")
+    print(f"Doom Entryway local server running at http://localhost:{PORT}")
     print("Press Ctrl+C to stop.")
     try:
         httpd.serve_forever()
