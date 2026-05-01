@@ -1,116 +1,133 @@
 # Doom Entryway 1.5.7
 
-## v1.5.7 Doom Entryway rename + state selector fix
+Doom Entryway is a local-first web app for tracking classic DOOM playthroughs. It manages IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, launcher presets, WebDAV sync, and debug logs from a browser-based interface.
 
-Fixes a death tracking race where refreshing latest `.zds` stats from a still-open browser page could overwrite deaths that were counted by the live terminal monitor.
-
-- Before saving, the app now re-checks the latest database and preserves any higher death counts written by the monitor.
-- Death monitor-created map rows are preserved if the browser state has not reloaded them yet.
-- The monitor now writes to the selected run when available, falling back to the last run.
-- WebDAV sync result cleanup from v1.5.3 is retained.
-
-## v1.2.1 Library quick filters
-- Click a WAD card play state to filter to that state.
-- Click IWAD, type, author, source port, or latest-run difficulty on a library card to apply that filter.
-- Click Avg Kills, Avg Items, or Avg Secrets chips to sort by that metric.
-- Added active quick-filter chips with one-click clearing.
-- README and About version text updated to 1.2.1.
-
-
-Doom Entryway is a local-first web app for tracking DOOM IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, and WebDAV sync.
+The app runs from a small local Python server and stores its data beside the app files unless you configure external folders or WebDAV sync.
 
 ## Start
 
-Linux:
+### Linux
 
 ```bash
 chmod +x start-linux.sh
 ./start-linux.sh
 ```
 
-Windows:
+On KDE and many other Linux desktops, you can also mark `start-linux.sh` as executable and double-click it from the file manager.
+
+### Windows
 
 ```bat
 start-windows.bat
 ```
 
-Then open the local address shown by the server, usually `http://localhost:8000`.
+After starting the server, open the local address shown by the app, usually:
 
-## Main features
+```text
+http://localhost:8000
+```
 
-- Library entries for IWADs, PWADs, PK3s, single maps, multi-map packs, episodes, and megawads.
-- Editable WAD info: title, author, source port, total maps, type, IWAD, notes, state, paths, and refresh exclusion.
-- Virtual folders, breadcrumbs, card view, compact view, and adjustable card width.
-- Automatic metadata extraction from WAD/PK3 files using UMAPINFO, MAPINFO, ZMAPINFO, and DEHACKED/BEX.
-- Companion TXT metadata folder support for idgames-style text files.
-- IWAD scanning with known map names, authors, and titlepics.
-- Multiple runs per WAD.
-- Manual `.zds` import and local save folder refresh using `globals.json`.
-- Per-map kills, items, secrets, level time, difficulty, source, author, notes, and medal status.
-- Per-map difficulty support using the save skill value from `globals.json`.
-- Gold, silver, bronze, no medal, and unplayed state handling.
-- Manual map editing with count or percentage entry.
-- Titlepics stored as external PNG files, including migration from older embedded database images.
-- Conversion of non-PNG titlepic inputs into PNG.
-- Per-WAD screenshot folders, auto-detection, thumbnail gallery, full-size preview, and permanent screenshot deletion.
-- Refresh All for saves and screenshots across configured WADs.
-- Settings for default save, PWAD/PK3, IWAD, metadata TXT, titlepic, and screenshot folders.
-- Optional deletion of associated files when deleting a WAD card.
-- Unassociated local file cleanup.
-- WebDAV settings, test connection, sync category toggles, two-way sync, force upload, purge remote, temporary transfer files, delete tombstones, hash checks, database backups, and local-wins conflict protection for database and saves.
+## Main screens
+
+- **Home**: dashboard summary, recent activity, medals, and quick actions.
+- **Library**: all WAD cards, folders, filters, sorting, progress, titlepics, tags, and quick-info popups.
+- **Stats**: cross-run summary across the library.
+- **Settings**: local folders, scan paths, WebDAV settings, launch paths, and refresh behaviour.
+- **Log / Debug**: recent server and launcher log history, useful when running without a visible terminal.
+- **About**: app version and general app information.
+
+## Core features
+
+- Track IWADs, PWADs, PK3s, single maps, multi-map packs, episodes, and megawads.
+- Create virtual folders and browse with breadcrumbs.
+- Use card view or compact view with adjustable card width.
+- Set play state: Plan to Play, Currently Playing, On Hold, Dropped, or Completed.
+- Track multiple runs per WAD.
+- Track per-map kills, items, secrets, level time, difficulty, source, author, notes, and medal status.
+- Medal support for gold, silver, bronze, no medal, and unplayed maps.
+- Manual map editing with either raw counts or percentage entry.
+- Library quick filters from WAD cards, including play state, IWAD, type, author, source port, difficulty, tags, and stat chips.
+- Clickable progress counts that open a map list popup with names, authors, and latest run results.
+- Custom tags with search and quick-filter support.
+
+## Metadata and artwork
+
+- Auto-detect WAD/PK3 metadata from UMAPINFO, MAPINFO, ZMAPINFO, and DEHACKED/BEX.
+- Auto-fill New WAD fields where metadata is available.
+- Pre-seed map lists with level codes, display names, and map authors where detected.
+- Parse companion TXT files, including idgames-style text files.
+- Show companion TXT files from the library without opening the full WAD page.
+- Scan known IWADs and fill known map names, authors, and titlepics.
+- Extract DOOM titlepic lumps and convert them to PNG.
+- Store titlepics as external PNG files to keep the database smaller.
+- Convert non-PNG titlepic inputs into PNG.
+- Click titlepics in the library or WAD detail page to open a larger preview.
+
+## Saves, screenshots, and refreshes
+
+- Import `.zds` save data manually.
+- Refresh the latest `.zds` for a WAD from its configured save folder.
+- Refresh All across configured WADs for saves and screenshots.
+- Read `globals.json` data from saves where available.
+- Auto-detect save subfolders from WAD names using fuzzy matching.
+- Track save difficulty from the save skill value.
+- Show only meaningful changes in Refresh All results instead of listing every unchanged file.
+- Optional file checks for missing, moved, and deleted local files.
+- Repair moved paths by searching configured root folders.
+- Treat missing companion TXT files and unplayed latest saves as normal optional cases instead of noisy errors.
+- Manage per-WAD screenshot folders with auto-detection, thumbnail gallery, full-size preview, and permanent screenshot deletion.
+
+## Launcher features
+
+- Launch DOOM directly from WAD entries.
+- Configure source port paths and launch-related folders in Settings.
+- Use global mods and additional files when launching.
+- Launch output is captured into the Log / Debug page when possible.
+- Death tracking is protected against refresh races so live monitor death counts are not overwritten by stale browser state.
+
+## WebDAV sync
+
+- Configure WebDAV connection details in Settings.
+- Test the WebDAV connection from the app.
+- Enable or disable sync categories.
+- Two-way sync database, saves, metadata, media, screenshots, and related files depending on your settings.
+- Force upload local data when needed.
+- Purge remote data when needed.
+- Use temporary transfer files, delete tombstones, hash checks, database backups, and local-wins conflict protection.
+- Queue remote cleanup or move actions when files are reorganised locally.
+
+## Log / Debug page
+
+The Log / Debug sidebar page is designed for setups where the server is launched without a visible terminal window.
+
+It shows recent local server history, HTTP requests, launcher activity, captured DOOM output, refresh activity, sync activity, and errors where available. The page includes **Refresh** and **Clear** buttons.
+
+The persistent log file is:
+
+```text
+doom_entryway_debug.log
+```
+
+It is stored beside `local_server.py`.
+
+## Data files
+
+The main database is stored beside the local server:
+
+```text
+doom_tracker_database.json
+```
+
+Machine-specific settings are stored separately:
+
+```text
+settings.json
+```
+
+Keeping settings separate means local paths and WebDAV credentials do not have to be stored inside the synced database.
 
 ## Notes
 
-The app stores its main data in `doom_tracker_database.json` next to the local server. Titlepics and other media can be stored externally in configured folders to keep the database small.
-
-
-## v1.0.2 settings storage
-
-Settings are stored in `settings.json` beside the local server instead of inside `doom_tracker_database.json`. This keeps local paths, WebDAV credentials, and sync settings machine-specific when multiple PCs use the same WebDAV database. Existing embedded settings are migrated automatically on first launch.
-
-
-## v1.0.2 missing/moved file check
-
-Refresh All can now optionally check linked files and folders, repair moved paths by searching configured root folders, remove missing WAD cards, and queue WebDAV cleanup/move actions for the next sync.
-
-## v1.0.6 Refresh All delta results
-
-Refresh All now reports only changes since the previous Refresh All run. Unchanged save scans, unchanged screenshot scans, excluded WADs, and normal file-check confirmations are hidden from the results dialog. Errors and real changes such as updated map stats, changed screenshot galleries, missing files, moved files, and warnings are still shown.
-
-
-## v1.0.7 Companion TXT map-list parsing
-
-Companion TXT parsing now reads explicit map names and map authors only from dedicated Levels/Maps sections. This prevents Music, Credits, and Contributor Commentary sections from being mistaken for WAD titles or map names. TNT2-style lines such as `- MAP01: "Obituary" -------- mouldy / Luisinho` now import as the map title plus author instead of accidentally pulling soundtrack titles or commentary text.
-
-
-
-## v1.2.0 Refresh All noise cleanup
-
-- Missing companion TXT files are now treated as optional, not as Refresh All errors or warnings. This keeps official IWADs, official expansions, and non-/idgames WADs from cluttering the results when no TXT exists.
-- If a stale companion TXT path was previously stored but the file is gone, Refresh All now reports one cleanup entry and removes the stale link.
-- Missing latest `.zds` files are treated as unplayed WADs and are silently skipped during Refresh All instead of appearing as a long error list.
-
-## v1.2.0 Reliability polish and quick-info fixes
-
-- Refresh All results now only list actual changes, warnings, errors, missing files, or moved files since the previous Refresh All.
-- New WAD creation preserves companion TXT paths detected during metadata extraction, so the Library Show TXT button appears immediately when a TXT exists.
-- Companion TXT preview prefers the stored TXT path and falls back to exact/recursive companion matching under the metadata folder.
-- File checking updates moved WAD/PK3 and companion TXT paths, queues WebDAV remote moves/deletes, and avoids redownloading old flat metadata TXT files after files are organised into subfolders.
-- Added clearer status text for metadata extraction and Refresh All change reports.
-
-## v1.1.0 Library quick-info popups
-
-- The library progress count is now clickable and opens a popup with every map name, map author, and the latest run results.
-- WAD cards with a detected companion TXT now show a **Show TXT** button so the WAD text file can be read without opening the card.
-
-## v1.2.4 Custom tags
-
-- Add comma-separated custom tags to WAD entries.
-- Show a compact tag preview on library cards with a +x popup for extra tags.
-- Click any tag to quick-filter the library.
-- Live search now matches tags.
-
-## v1.2.2 Clickable titlepics
-
-- Clickable titlepics in the Library and WAD detail views.
-- Titlepics now open in the same full-size popup style used by screenshots.
+- This is a local-first personal tracking app, not a hosted web service.
+- Keep backups of your database, especially before testing sync changes or large library reorganisations.
+- Some internal filenames still use the older `doom_tracker` naming for compatibility with existing data, but the user-facing app name is Doom Entryway.
