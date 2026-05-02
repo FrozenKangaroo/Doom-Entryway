@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.8";
+const APP_VERSION = "1.5.10";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -92,6 +92,7 @@ function wireEvents() {
   document.getElementById('importDbButton').addEventListener('click', () => importDbInput?.click());
   importDbInput?.addEventListener('change', handleDatabaseImport);
   document.getElementById('chooseNewPwadButton')?.addEventListener('click', choosePwadForNewWad);
+  mapForm.elements.leveltime?.addEventListener('input', updateLevelTimePreview);
 
   wadForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -212,7 +213,13 @@ function wireEvents() {
     const run = wad.runs.find((r) => r.id === formData.get('runId'));
     if (!run) return;
 
-    const payload = mapFormDataToMapResult(formData);
+    let payload;
+    try {
+      payload = mapFormDataToMapResult(formData);
+    } catch (error) {
+      showAlert('error', error.message || 'Level time could not be parsed.');
+      return;
+    }
     const existingIndex = run.maps.findIndex((m) => m.id === payload.id);
 
     if (existingIndex >= 0) {
@@ -3204,7 +3211,7 @@ function mapFormDataToMapResult(formData) {
     totalitems: Number(formData.get('totalitems')) || 0,
     secretcount,
     totalsecrets: Number(formData.get('totalsecrets')) || 0,
-    leveltime: Number(formData.get('leveltime')) || 0,
+    leveltime: parseLevelTimeInput(formData.get('leveltime')),
     deaths: Number(formData.get('deaths')) || 0,
     difficulty: String(formData.get('difficulty') || '').trim(),
     sourceType: String(formData.get('sourceType') || 'manual'),
@@ -4106,6 +4113,54 @@ function formatTics(tics) {
   const seconds = totalSeconds % 60;
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatTicsForInput(tics) {
+  return formatTics(tics || 0);
+}
+
+function parseLevelTimeInput(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return 0;
+
+  const ticsMatch = raw.match(/^(\d+(?:\.\d+)?)\s*(?:t|tic|tics)$/);
+  if (ticsMatch) return Math.max(0, Math.round(Number(ticsMatch[1]) || 0));
+
+  const minutesMatch = raw.match(/^(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)$/);
+  if (minutesMatch) return Math.max(0, Math.round((Number(minutesMatch[1]) || 0) * 60 * 35));
+
+  const secondsMatch = raw.match(/^(\d+(?:\.\d+)?)\s*(?:s|sec|secs|second|seconds)$/);
+  if (secondsMatch) return Math.max(0, Math.round((Number(secondsMatch[1]) || 0) * 35));
+
+  if (raw.includes(':')) {
+    const parts = raw.split(':').map((part) => part.trim());
+    if (parts.length < 2 || parts.length > 3 || parts.some((part) => part === '' || Number.isNaN(Number(part)))) {
+      throw new Error('Level time must look like 7:32, 1:02:15, 452s, or 15820 tics.');
+    }
+    const numbers = parts.map(Number);
+    const totalSeconds = parts.length === 3
+      ? (numbers[0] * 3600) + (numbers[1] * 60) + numbers[2]
+      : (numbers[0] * 60) + numbers[1];
+    return Math.max(0, Math.round(totalSeconds * 35));
+  }
+
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    return Math.max(0, Math.round((Number(raw) || 0) * 35));
+  }
+
+  throw new Error('Level time must look like 7:32, 1:02:15, 452s, or 15820 tics.');
+}
+
+function updateLevelTimePreview() {
+  const input = mapForm?.elements?.leveltime;
+  const hint = document.getElementById('timeComputed');
+  if (!input || !hint) return;
+  try {
+    const tics = parseLevelTimeInput(input.value);
+    hint.textContent = `= ${tics} tics (${formatTics(tics)})`;
+  } catch {
+    hint.textContent = '= invalid time';
+  }
 }
 
 function formatDate(value) {
@@ -5894,6 +5949,8 @@ WARNING: Your setting to delete associated files is enabled. This will permanent
     mapForm.elements.sourceType.value = 'manual';
     if (mapForm.elements.difficulty) mapForm.elements.difficulty.value = getLatestRun(getCurrentWad())?.difficulty || 'UV';
     mapForm.elements.mapAuthor.value = '';
+    mapForm.elements.leveltime.value = '0:00';
+    updateLevelTimePreview();
     deleteMapButton.style.visibility = 'hidden';
     updateInputModeUI();
     mapDialog.showModal();
@@ -5918,7 +5975,8 @@ WARNING: Your setting to delete associated files is enabled. This will permanent
     mapForm.elements.killcount.value = map.killcount;
     mapForm.elements.itemcount.value = map.itemcount;
     mapForm.elements.secretcount.value = map.secretcount;
-    mapForm.elements.leveltime.value = map.leveltime;
+    mapForm.elements.leveltime.value = formatTicsForInput(map.leveltime);
+    updateLevelTimePreview();
     mapForm.elements.deaths.value = map.deaths || 0;
     if (mapForm.elements.difficulty) mapForm.elements.difficulty.value = map.difficulty || run.difficulty || 'UV';
     mapForm.elements.sourceType.value = map.sourceType || 'manual';

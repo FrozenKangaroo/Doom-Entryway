@@ -19,7 +19,7 @@
           <div class="brand-mark"><img src="doom-entryway-icon.png" alt="Doom Entryway icon" class="brand-mark-image" /></div>
           <div>
             <h1>Doom Entryway</h1>
-            <p>1.5.8 Release</p>
+            <p>1.5.10 Release</p>
           </div>
         </div>
 
@@ -64,7 +64,7 @@
         <div class="home-dashboard section-stack">
           <section class="home-hero">
             <div>
-              <p class="eyebrow">Doom Entryway 1.5.8</p>
+              <p class="eyebrow">Doom Entryway 1.5.10</p>
               <h3>Your Doom command center</h3>
               <p class="muted-text">Loading dashboard…</p>
             </div>
@@ -306,10 +306,12 @@
         </label>
       </div>
 
-      <div class="form-grid compact-grid" style="margin-top:0.5rem;">
+      <div class="form-grid compact-grid map-stats-extra-grid" style="margin-top:0.5rem;">
         <label>
-          Level Time (tics)
-          <input name="leveltime" type="number" min="0" value="0" />
+          Level Time
+          <input name="leveltime" type="text" inputmode="decimal" value="0:00" placeholder="7:32 or 1:02:15" />
+          <span class="field-help">Enter mm:ss, hh:mm:ss, seconds, or raw tics with a <code>tics</code> suffix.</span>
+          <span class="computed-hint" id="timeComputed">= 0 tics</span>
         </label>
         <label>
           Deaths

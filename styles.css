@@ -384,6 +384,17 @@ code {
   padding: 0.75rem 0.8rem;
 }
 .full-width { grid-column: 1 / -1; }
+
+.map-stats-extra-grid {
+  align-items: start;
+}
+.map-stats-extra-grid label {
+  align-self: start;
+}
+.map-stats-extra-grid input,
+.map-stats-extra-grid select {
+  min-height: 43px;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;

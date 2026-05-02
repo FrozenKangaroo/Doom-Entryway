@@ -12354,3 +12354,659 @@
 [2026-05-02 11:55:46] [HTTP] "GET /api/titlepic?file=No_Rest_For_the_Living_fc9fc35ed6.png&v=2026-05-01T01%3A50%3A06.168Z HTTP/1.1" 200 -
 [2026-05-02 11:55:46] [HTTP] "GET /api/titlepic?file=DOOM_II_Hell_on_Earth_02dfdc3f5e.png&v=2026-04-30T02%3A20%3A39.348889%2B00%3A00 HTTP/1.1" 200 -
 [2026-05-02 11:55:50] [HTTP] "POST /api/scan-launch-files HTTP/1.1" 200 -
+[2026-05-02 12:52:10] [LAUNCH] Launching game: flatpak-spawn --host /mnt/Nobara-PC/Doom/uzdoom-flatpak.sh -iwad /mnt/Nobara-PC/Doom/iwads/doom.wad -file /mnt/Nobara-PC/Doom/mods/extras.wad /mnt/Nobara-PC/Doom/mods/SkyPlus.wad /mnt/Nobara-PC/Doom/mods/VoxelDoom_v2.4.pk3 /mnt/Nobara-PC/Doom/mods/brightmaps.pk3 /mnt/Nobara-PC/Doom/mods/relighting v4.0165b.pk3 /mnt/Nobara-PC/Doom/mods/NeuralUpscale2x_v1.0.pk3 /mnt/Nobara-PC/Doom/mods/Beautiful_Doom_716.pk3 /mnt/Nobara-PC/Doom/mods/nashgore.pk3 /mnt/Nobara-PC/Doom/mods/nashgore_voxels_official.pk3 /mnt/Nobara-PC/Doom/mods/1 Universal Ambience.pk3 /mnt/Nobara-PC/Doom/mods/2 CosmoAmbience Script edited.pk3 /mnt/Nobara-PC/Doom/mods/3 Ambient decorations.pk3 /mnt/Nobara-PC/Doom/mods/LTP V7.0.1.pk3 /mnt/Nobara-PC/Doom/mods/LTP (Custom 19.5x9) RT Reflection 1560x720.pk3 /mnt/Nobara-PC/Doom/mods/flashlight_plus_plus_v9_1.pk3 /mnt/Nobara-PC/Doom/mods/morelights2.5.1_base.pk3 /mnt/Nobara-PC/Doom/mods/bmplus_textures.pk3 -savedir /mnt/Nobara-PC/Doom/saves/Doom -shotdir /mnt/Nobara-PC/Doom/screenshots/Doom
+[2026-05-02 12:52:10] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 12:52:10] [HTTP] "POST /api/launch-game HTTP/1.1" 200 -
+[2026-05-02 12:52:10] [HTTP] "POST /api/database HTTP/1.1" 200 -
+[2026-05-02 12:52:16] [DOOM] Note: Illegal Audio-MPEG-Header 0x00000000 at offset 16487.
+[2026-05-02 12:52:16] [DOOM] Note: Trying to resync...
+[2026-05-02 12:52:16] [DOOM] Note: Hit end of (available) data during resync.
+[2026-05-02 12:59:14] [DOOM] UZDoom 4.14.3-m - 2025-11-28 18:13:58 -0500 - SDL version
+[2026-05-02 12:59:14] [DOOM] Compiled on Nov 11 2011
+[2026-05-02 12:59:14] [DOOM] OS: Freedesktop SDK 25.08 (Flatpak runtime), Linux 7.0.0-200.nobara.fc43.x86_64 on x86_64
+[2026-05-02 12:59:14] [DOOM] UZDoom version 4.14.3-m
+[2026-05-02 12:59:14] [DOOM] W_Init: Init WADfiles.
+[2026-05-02 12:59:14] [DOOM] adding /app/share/games/uzdoom/uzdoom.pk3, 694 lumps
+[2026-05-02 12:59:14] [DOOM] adding /app/share/games/uzdoom/game_support.pk3, 3308 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/iwads/doom.wad, 2308 lumps
+[2026-05-02 12:59:14] [DOOM] adding /app/share/games/uzdoom/game_widescreen_gfx.pk3, 214 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/extras.wad, 170 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/SkyPlus.wad, 50 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/VoxelDoom_v2.4.pk3, 1197 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/brightmaps.pk3, 499 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/relighting v4.0165b.pk3, 34 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/NeuralUpscale2x_v1.0.pk3, 4384 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/NeuralUpscale2x_v1.0.pk3:stepfix.wad, 5 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/Beautiful_Doom_716.pk3, 7956 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/nashgore.pk3, 169 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/nashgore_voxels_official.pk3, 40 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/1 Universal Ambience.pk3, 33 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/2 CosmoAmbience Script edited.pk3, 49 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/3 Ambient decorations.pk3, 20 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/LTP V7.0.1.pk3, 229 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/LTP (Custom 19.5x9) RT Reflection 1560x720.pk3, 1 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/flashlight_plus_plus_v9_1.pk3, 33 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/morelights2.5.1_base.pk3, 79 lumps
+[2026-05-02 12:59:14] [DOOM] adding /mnt/Nobara-PC/Doom/mods/bmplus_textures.pk3, 308 lumps
+[2026-05-02 12:59:14] [DOOM] S_Init: Setting up sound.
+[2026-05-02 12:59:14] [DOOM] I_InitSound: Initializing OpenAL
+[2026-05-02 12:59:14] [DOOM] Opened device G560 Gaming Speaker Analog Stereo
+[2026-05-02 12:59:14] [DOOM] EFX enabled
+[2026-05-02 12:59:14] [DOOM] Using video driver wayland
+[2026-05-02 12:59:14] [DOOM] Number of detected displays 1 .
+[2026-05-02 12:59:14] [DOOM] Creating window [4096x1152] on adapter 0
+[2026-05-02 12:59:14] [DOOM] Vulkan device: NVIDIA GeForce RTX 5080
+[2026-05-02 12:59:14] [DOOM] Vulkan device type: discrete gpu
+[2026-05-02 12:59:14] [DOOM] Vulkan version: 1.4.329 (api) 595.232.192 (driver)
+[2026-05-02 12:59:14] [DOOM] Max. texture size: 32768
+[2026-05-02 12:59:14] [DOOM] Max. uniform buffer range: 65536
+[2026-05-02 12:59:14] [DOOM] Min. uniform buffer offset alignment: 64
+[2026-05-02 12:59:14] [DOOM] Resolution: 640 x 480
+[2026-05-02 12:59:14] [DOOM] I_Init: Setting up machine state.
+[2026-05-02 12:59:14] [DOOM] CPU Vendor ID: AuthenticAMD
+[2026-05-02 12:59:14] [DOOM] Name: AMD Ryzen 9 9950X3D 16-Core Processor
+[2026-05-02 12:59:14] [DOOM] Family 26 (26), Model 68, Stepping 0
+[2026-05-02 12:59:14] [DOOM] Features: SSE2 SSE3 SSSE3 SSE4.1 SSE4.2 AVX AVX2 AVX512 F16C FMA3 BMI1 BMI2 HyperThreading
+[2026-05-02 12:59:14] [DOOM] V_Init: allocate screen.
+[2026-05-02 12:59:14] [DOOM] ST_Init: Init startup screen.
+[2026-05-02 12:59:14] [DOOM] Checking cmd-line parameters...
+[2026-05-02 12:59:14] [DOOM] S_InitData: Load sound definitions.
+[2026-05-02 12:59:14] [DOOM] G_ParseMapInfo: Load map definitions.
+[2026-05-02 12:59:14] [DOOM] Texman.Init: Init texture manager.
+[2026-05-02 12:59:14] [DOOM] ParseTeamInfo: Load team definitions.
+[2026-05-02 12:59:14] [DOOM] LoadActors: Load actor definitions.
+[2026-05-02 12:59:14] [DOOM] script parsing took 349.48 ms
+[2026-05-02 12:59:14] [DOOM] R_Init: Init Doom refresh subsystem.
+[2026-05-02 12:59:14] [DOOM] DecalLibrary: Load decals.
+[2026-05-02 12:59:14] [DOOM] DistX in slider decal BSlideHD is unsupported
+[2026-05-02 12:59:14] [DOOM] M_Init: Init menus.
+[2026-05-02 12:59:14] [DOOM] P_Init: Init Playloop state.
+[2026-05-02 12:59:14] [DOOM] ParseSBarInfo: Loading custom status bar definition.
+[2026-05-02 12:59:14] [DOOM] More Lights, made by Jakie
+[2026-05-02 12:59:14] [DOOM] D_CheckNetGame: Checking network game status.
+[2026-05-02 12:59:14] [DOOM] player 1 of 1 (1 nodes)
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] E3M7 - Limbo
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] E3M7 - Limbo
+[2026-05-02 12:59:14] [DOOM] You got the shotgun!
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] E3M7 - Limbo
+[2026-05-02 12:59:14] [DOOM] You got the shotgun!
+[2026-05-02 12:59:14] [DOOM] You got the shotgun!
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Picked up a backpack full of ammo!
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Captured Screenshot_Doom_20260502_125341.png
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Picked up a blue skull key.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] A secret is revealed!
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] Picked up the MegaArmor!
+[2026-05-02 12:59:14] [DOOM] Picked up a rocket.
+[2026-05-02 12:59:14] [DOOM] Picked up an armor bonus.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] You got the rocket launcher!
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] A secret is revealed!
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Picked up an energy cell.
+[2026-05-02 12:59:14] [DOOM] Picked up an energy cell.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Picked up a box of bullets.
+[2026-05-02 12:59:14] [DOOM] Game saved.
+[2026-05-02 12:59:14] [DOOM] Radiation Shielding Suit
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 12:59:14] [DOOM] A secret is revealed!
+[2026-05-02 12:59:14] [DOOM] ----------------------------------------
+[2026-05-02 13:05:10] [DOOM] You got the shotgun!
+[2026-05-02 13:05:10] [DOOM] You got the BFG9000! Oh, yes.
+[2026-05-02 13:05:10] [DOOM] Radiation Shielding Suit
+[2026-05-02 13:05:10] [DOOM] Picked up a red skull key.
+[2026-05-02 13:05:10] [DOOM] Picked up an energy cell.
+[2026-05-02 13:05:10] [DOOM] Radiation Shielding Suit
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] ----------------------------------------
+[2026-05-02 13:05:10] [DOOM] E3M7 - Limbo
+[2026-05-02 13:05:10] [DOOM] Picked up an energy cell.
+[2026-05-02 13:05:10] [DOOM] Picked up a clip.
+[2026-05-02 13:05:10] [DOOM] Picked up a yellow skull key.
+[2026-05-02 13:05:10] [DOOM] Picked up an energy cell.
+[2026-05-02 13:05:10] [DOOM] Picked up a clip.
+[2026-05-02 13:05:10] [DOOM] You got the shotgun!
+[2026-05-02 13:05:10] [DOOM] You got the shotgun!
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Radiation Shielding Suit
+[2026-05-02 13:05:10] [DOOM] ----------------------------------------
+[2026-05-02 13:05:10] [DOOM] A secret is revealed!
+[2026-05-02 13:05:10] [DOOM] ----------------------------------------
+[2026-05-02 13:05:10] [DOOM] You got the plasma gun!
+[2026-05-02 13:05:10] [DOOM] Picked up a rocket.
+[2026-05-02 13:05:10] [DOOM] Picked up a health bonus.
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Picked up a medikit.
+[2026-05-02 13:05:10] [DOOM] Picked up a medikit.
+[2026-05-02 13:05:10] [DOOM] Supercharge!
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Picked up a box of shotgun shells.
+[2026-05-02 13:05:10] [DOOM] ----------------------------------------
+[2026-05-02 13:05:10] [DOOM] E3M8 - Dis
+[2026-05-02 13:05:10] [DOOM] csawa
+[2026-05-02 13:05:10] [DOOM] pista
+[2026-05-02 13:05:10] [DOOM] shota
+[2026-05-02 13:05:10] [DOOM] mguna
+[2026-05-02 13:05:10] [DOOM] launa
+[2026-05-02 13:05:10] [DOOM] plasa
+[2026-05-02 13:05:10] [DOOM] bfuga
+[2026-05-02 13:05:10] [DOOM] clipa
+[2026-05-02 13:05:10] [DOOM] ammoa
+[2026-05-02 13:05:10] [DOOM] shela
+[2026-05-02 13:05:10] [DOOM] sboxa
+[2026-05-02 13:05:10] [DOOM] rocka
+[2026-05-02 13:05:10] [DOOM] broka
+[2026-05-02 13:05:10] [DOOM] cella
+[2026-05-02 13:05:10] [DOOM] celpa
+[2026-05-02 13:05:10] [DOOM] misla
+[2026-05-02 13:05:10] [DOOM] plssa
+[2026-05-02 13:05:10] [DOOM] plssb
+[2026-05-02 13:05:10] [DOOM] bfs1a
+[2026-05-02 13:05:10] [DOOM] bfs1b
+[2026-05-02 13:05:10] [DOOM] pstra
+[2026-05-02 13:05:10] [DOOM] pvisa
+[2026-05-02 13:05:10] [DOOM] pvisb
+[2026-05-02 13:05:10] [DOOM] pmapa
+[2026-05-02 13:05:10] [DOOM] pmapb
+[2026-05-02 13:05:10] [DOOM] pmapc
+[2026-05-02 13:05:10] [DOOM] pmapd
+[2026-05-02 13:05:10] [DOOM] suita
+[2026-05-02 13:05:10] [DOOM] vinva
+[2026-05-02 13:05:10] [DOOM] vinvb
+[2026-05-02 13:05:10] [DOOM] vinvc
+[2026-05-02 13:05:10] [DOOM] vinvd
+[2026-05-02 13:05:10] [DOOM] voula
+[2026-05-02 13:05:10] [DOOM] voulb
+[2026-05-02 13:05:10] [DOOM] voulc
+[2026-05-02 13:05:10] [DOOM] vould
+[2026-05-02 13:05:10] [DOOM] vinsa
+[2026-05-02 13:05:10] [DOOM] vinsb
+[2026-05-02 13:05:10] [DOOM] vinsc
+[2026-05-02 13:05:10] [DOOM] vinsd
+[2026-05-02 13:05:10] [DOOM] stima
+[2026-05-02 13:05:10] [DOOM] media
+[2026-05-02 13:05:10] [DOOM] arm1a
+[2026-05-02 13:05:10] [DOOM] arm1b
+[2026-05-02 13:05:10] [DOOM] arm2a
+[2026-05-02 13:05:10] [DOOM] arm2b
+[2026-05-02 13:05:10] [DOOM] bon1a
+[2026-05-02 13:05:10] [DOOM] bon1b
+[2026-05-02 13:05:10] [DOOM] bon1c
+[2026-05-02 13:05:10] [DOOM] bon1d
+[2026-05-02 13:05:10] [DOOM] bon2a
+[2026-05-02 13:05:10] [DOOM] bon2b
+[2026-05-02 13:05:10] [DOOM] bon2c
+[2026-05-02 13:05:10] [DOOM] bon2d
+[2026-05-02 13:05:10] [DOOM] bkeya
+[2026-05-02 13:05:10] [DOOM] bkeyb
+[2026-05-02 13:05:10] [DOOM] rkeya
+[2026-05-02 13:05:10] [DOOM] rkeyb
+[2026-05-02 13:05:10] [DOOM] ykeya
+[2026-05-02 13:05:10] [DOOM] ykeyb
+[2026-05-02 13:05:10] [DOOM] bskua
+[2026-05-02 13:05:10] [DOOM] bskub
+[2026-05-02 13:05:10] [DOOM] rskua
+[2026-05-02 13:05:10] [DOOM] rskub
+[2026-05-02 13:05:10] [DOOM] yskua
+[2026-05-02 13:05:10] [DOOM] yskub
+[2026-05-02 13:05:10] [DOOM] bpaka
+[2026-05-02 13:05:10] [DOOM] possa
+[2026-05-02 13:05:10] [DOOM] possb
+[2026-05-02 13:05:10] [DOOM] possc
+[2026-05-02 13:05:10] [DOOM] possd
+[2026-05-02 13:05:10] [DOOM] posse
+[2026-05-02 13:05:10] [DOOM] possf
+[2026-05-02 13:05:10] [DOOM] possg
+[2026-05-02 13:05:10] [DOOM] possh
+[2026-05-02 13:05:10] [DOOM] possi
+[2026-05-02 13:05:10] [DOOM] possj
+[2026-05-02 13:05:10] [DOOM] possk
+[2026-05-02 13:05:10] [DOOM] possl
+[2026-05-02 13:05:10] [DOOM] possm
+[2026-05-02 13:05:10] [DOOM] possn
+[2026-05-02 13:05:10] [DOOM] posso
+[2026-05-02 13:05:10] [DOOM] possp
+[2026-05-02 13:05:10] [DOOM] possq
+[2026-05-02 13:05:10] [DOOM] possr
+[2026-05-02 13:05:10] [DOOM] posss
+[2026-05-02 13:05:10] [DOOM] posst
+[2026-05-02 13:05:10] [DOOM] possu
+[2026-05-02 13:05:10] [DOOM] sposa
+[2026-05-02 13:05:10] [DOOM] sposb
+[2026-05-02 13:05:10] [DOOM] sposc
+[2026-05-02 13:05:10] [DOOM] sposd
+[2026-05-02 13:05:10] [DOOM] spose
+[2026-05-02 13:05:10] [DOOM] sposf
+[2026-05-02 13:05:10] [DOOM] sposg
+[2026-05-02 13:05:10] [DOOM] sposh
+[2026-05-02 13:05:10] [DOOM] sposi
+[2026-05-02 13:05:10] [DOOM] sposj
+[2026-05-02 13:05:10] [DOOM] sposk
+[2026-05-02 13:05:10] [DOOM] sposl
+[2026-05-02 13:05:10] [DOOM] sposm
+[2026-05-02 13:05:10] [DOOM] sposn
+[2026-05-02 13:05:10] [DOOM] sposo
+[2026-05-02 13:05:10] [DOOM] sposp
+[2026-05-02 13:05:10] [DOOM] sposq
+[2026-05-02 13:05:10] [DOOM] sposr
+[2026-05-02 13:05:10] [DOOM] sposs
+[2026-05-02 13:05:10] [DOOM] spost
+[2026-05-02 13:05:10] [DOOM] sposu
+[2026-05-02 13:05:10] [DOOM] trooa
+[2026-05-02 13:05:10] [DOOM] troob
+[2026-05-02 13:05:10] [DOOM] trooc
+[2026-05-02 13:05:10] [DOOM] trood
+[2026-05-02 13:05:10] [DOOM] trooe
+[2026-05-02 13:05:10] [DOOM] troof
+[2026-05-02 13:05:10] [DOOM] troog
+[2026-05-02 13:05:10] [DOOM] trooh
+[2026-05-02 13:05:10] [DOOM] trooi
+[2026-05-02 13:05:10] [DOOM] trooj
+[2026-05-02 13:05:10] [DOOM] trook
+[2026-05-02 13:05:10] [DOOM] trool
+[2026-05-02 13:05:10] [DOOM] troom
+[2026-05-02 13:05:10] [DOOM] troon
+[2026-05-02 13:05:10] [DOOM] trooo
+[2026-05-02 13:05:10] [DOOM] troop
+[2026-05-02 13:05:10] [DOOM] trooq
+[2026-05-02 13:05:10] [DOOM] troor
+[2026-05-02 13:05:10] [DOOM] troos
+[2026-05-02 13:05:10] [DOOM] troot
+[2026-05-02 13:05:10] [DOOM] troou
+[2026-05-02 13:05:10] [DOOM] bal1a
+[2026-05-02 13:05:10] [DOOM] bal1b
+[2026-05-02 13:05:10] [DOOM] bal1c
+[2026-05-02 13:05:10] [DOOM] bal1d
+[2026-05-02 13:05:10] [DOOM] bal1e
+[2026-05-02 13:05:10] [DOOM] sarga
+[2026-05-02 13:05:10] [DOOM] sargb
+[2026-05-02 13:05:10] [DOOM] sargc
+[2026-05-02 13:05:10] [DOOM] sargd
+[2026-05-02 13:05:10] [DOOM] sarge
+[2026-05-02 13:05:10] [DOOM] sargf
+[2026-05-02 13:05:10] [DOOM] sargh
+[2026-05-02 13:05:10] [DOOM] sargi
+[2026-05-02 13:05:10] [DOOM] sargj
+[2026-05-02 13:05:10] [DOOM] sargk
+[2026-05-02 13:05:10] [DOOM] sargl
+[2026-05-02 13:05:10] [DOOM] sargm
+[2026-05-02 13:05:10] [DOOM] sargn
+[2026-05-02 13:05:10] [DOOM] heada
+[2026-05-02 13:05:10] [DOOM] headb
+[2026-05-02 13:05:10] [DOOM] headc
+[2026-05-02 13:05:10] [DOOM] headd
+[2026-05-02 13:05:10] [DOOM] heade
+[2026-05-02 13:05:10] [DOOM] headf
+[2026-05-02 13:05:10] [DOOM] headg
+[2026-05-02 13:05:10] [DOOM] headh
+[2026-05-02 13:05:10] [DOOM] headi
+[2026-05-02 13:05:10] [DOOM] headj
+[2026-05-02 13:05:10] [DOOM] headk
+[2026-05-02 13:05:10] [DOOM] headl
+[2026-05-02 13:05:10] [DOOM] bal2a
+[2026-05-02 13:05:10] [DOOM] bal2b
+[2026-05-02 13:05:10] [DOOM] bal2c
+[2026-05-02 13:05:10] [DOOM] bal2d
+[2026-05-02 13:05:10] [DOOM] bal2e
+[2026-05-02 13:05:10] [DOOM] skula
+[2026-05-02 13:05:10] [DOOM] skulb
+[2026-05-02 13:05:10] [DOOM] skulc
+[2026-05-02 13:05:10] [DOOM] skuld
+[2026-05-02 13:05:10] [DOOM] skule
+[2026-05-02 13:05:10] [DOOM] skulf
+[2026-05-02 13:05:10] [DOOM] skulg
+[2026-05-02 13:05:10] [DOOM] skulh
+[2026-05-02 13:05:10] [DOOM] skuli
+[2026-05-02 13:05:10] [DOOM] skulj
+[2026-05-02 13:05:10] [DOOM] skulk
+[2026-05-02 13:05:10] [DOOM] bossa
+[2026-05-02 13:05:10] [DOOM] bossb
+[2026-05-02 13:05:10] [DOOM] bossc
+[2026-05-02 13:05:10] [DOOM] bossd
+[2026-05-02 13:05:10] [DOOM] bosse
+[2026-05-02 13:05:10] [DOOM] bossf
+[2026-05-02 13:05:10] [DOOM] bossg
+[2026-05-02 13:05:10] [DOOM] bossh
+[2026-05-02 13:05:10] [DOOM] bossi
+[2026-05-02 13:05:10] [DOOM] bossj
+[2026-05-02 13:05:10] [DOOM] bossk
+[2026-05-02 13:05:10] [DOOM] bossl
+[2026-05-02 13:05:10] [DOOM] bossm
+[2026-05-02 13:05:10] [DOOM] bossn
+[2026-05-02 13:05:10] [DOOM] bosso
+[2026-05-02 13:05:10] [DOOM] bal7a
+[2026-05-02 13:05:10] [DOOM] bal7b
+[2026-05-02 13:05:10] [DOOM] bal7c
+[2026-05-02 13:05:10] [DOOM] bal7d
+[2026-05-02 13:05:10] [DOOM] bal7e
+[2026-05-02 13:05:10] [DOOM] cybra
+[2026-05-02 13:05:10] [DOOM] cybrb
+[2026-05-02 13:05:10] [DOOM] cybrc
+[2026-05-02 13:05:10] [DOOM] cybrd
+[2026-05-02 13:05:10] [DOOM] cybre
+[2026-05-02 13:05:10] [DOOM] cybrf
+[2026-05-02 13:05:10] [DOOM] cybrg
+[2026-05-02 13:05:10] [DOOM] cybrh
+[2026-05-02 13:05:10] [DOOM] cybri
+[2026-05-02 13:05:10] [DOOM] cybrj
+[2026-05-02 13:05:10] [DOOM] cybrk
+[2026-05-02 13:05:10] [DOOM] cybrl
+[2026-05-02 13:05:10] [DOOM] cybrm
+[2026-05-02 13:05:10] [DOOM] cybrn
+[2026-05-02 13:05:10] [DOOM] cybro
+[2026-05-02 13:05:10] [DOOM] cybrp
+[2026-05-02 13:05:10] [DOOM] spida
+[2026-05-02 13:05:10] [DOOM] spidb
+[2026-05-02 13:05:10] [DOOM] spidc
+[2026-05-02 13:05:10] [DOOM] spidd
+[2026-05-02 13:05:10] [DOOM] spide
+[2026-05-02 13:05:10] [DOOM] spidf
+[2026-05-02 13:05:10] [DOOM] spidg
+[2026-05-02 13:05:10] [DOOM] spidh
+[2026-05-02 13:05:10] [DOOM] spidi
+[2026-05-02 13:05:10] [DOOM] spidj
+[2026-05-02 13:05:10] [DOOM] spidk
+[2026-05-02 13:05:10] [DOOM] spidl
+[2026-05-02 13:05:10] [DOOM] spidm
+[2026-05-02 13:05:10] [DOOM] spidn
+[2026-05-02 13:05:10] [DOOM] spido
+[2026-05-02 13:05:10] [DOOM] spidp
+[2026-05-02 13:05:10] [DOOM] spidq
+[2026-05-02 13:05:10] [DOOM] spidr
+[2026-05-02 13:05:10] [DOOM] spids
+[2026-05-02 13:05:10] [DOOM] playa
+[2026-05-02 13:05:10] [DOOM] playb
+[2026-05-02 13:05:10] [DOOM] playc
+[2026-05-02 13:05:10] [DOOM] playd
+[2026-05-02 13:05:10] [DOOM] playe
+[2026-05-02 13:05:10] [DOOM] playf
+[2026-05-02 13:05:10] [DOOM] playg
+[2026-05-02 13:05:10] [DOOM] playh
+[2026-05-02 13:05:10] [DOOM] playi
+[2026-05-02 13:05:10] [DOOM] playj
+[2026-05-02 13:05:10] [DOOM] playk
+[2026-05-02 13:05:10] [DOOM] playl
+[2026-05-02 13:05:10] [DOOM] playm
+[2026-05-02 13:05:10] [DOOM] playn
+[2026-05-02 13:05:10] [DOOM] playo
+[2026-05-02 13:05:10] [DOOM] playp
+[2026-05-02 13:05:10] [DOOM] playq
+[2026-05-02 13:05:10] [DOOM] playr
+[2026-05-02 13:05:10] [DOOM] plays
+[2026-05-02 13:05:10] [DOOM] playt
+[2026-05-02 13:05:10] [DOOM] playu
+[2026-05-02 13:05:10] [DOOM] playv
+[2026-05-02 13:05:10] [DOOM] playw
+[2026-05-02 13:05:10] [DOOM] bar1a
+[2026-05-02 13:05:10] [DOOM] bar1b
+[2026-05-02 13:05:10] [DOOM] bexpa
+[2026-05-02 13:05:10] [DOOM] bexpb
+[2026-05-02 13:05:10] [DOOM] bexpc
+[2026-05-02 13:05:10] [DOOM] bexpd
+[2026-05-02 13:05:10] [DOOM] bexpe
+[2026-05-02 13:05:10] [DOOM] col1a
+[2026-05-02 13:05:10] [DOOM] col2a
+[2026-05-02 13:05:10] [DOOM] col3a
+[2026-05-02 13:05:10] [DOOM] col4a
+[2026-05-02 13:05:10] [DOOM] col5a
+[2026-05-02 13:05:10] [DOOM] col5b
+[2026-05-02 13:05:10] [DOOM] col6a
+[2026-05-02 13:05:10] [DOOM] canda
+[2026-05-02 13:05:10] [DOOM] tre2a
+[2026-05-02 13:05:10] [DOOM] colua
+[2026-05-02 13:05:10] [DOOM] eleca
+[2026-05-02 13:05:10] [DOOM] gor1a
+[2026-05-02 13:05:10] [DOOM] gor1b
+[2026-05-02 13:05:10] [DOOM] gor1c
+[2026-05-02 13:05:10] [DOOM] gor2a
+[2026-05-02 13:05:10] [DOOM] gor3a
+[2026-05-02 13:05:10] [DOOM] gor4a
+[2026-05-02 13:05:10] [DOOM] gor5a
+[2026-05-02 13:05:10] [DOOM] smita
+[2026-05-02 13:05:10] [DOOM] pol5a
+[2026-05-02 13:05:10] [DOOM] pol1a
+[2026-05-02 13:05:10] [DOOM] pol2a
+[2026-05-02 13:05:10] [DOOM] ceyea
+[2026-05-02 13:05:10] [DOOM] ceyeb
+[2026-05-02 13:05:10] [DOOM] ceyec
+[2026-05-02 13:05:10] [DOOM] cbraa
+[2026-05-02 13:05:10] [DOOM] fskua
+[2026-05-02 13:05:10] [DOOM] fskub
+[2026-05-02 13:05:10] [DOOM] fskuc
+[2026-05-02 13:05:10] [DOOM] tre1a
+[2026-05-02 13:05:10] [DOOM] pol3a
+[2026-05-02 13:05:10] [DOOM] pol3b
+[2026-05-02 13:05:10] [DOOM] pol4a
+[2026-05-02 13:05:10] [DOOM] smrta
+[2026-05-02 13:05:10] [DOOM] smrtb
+[2026-05-02 13:05:10] [DOOM] smrtc
+[2026-05-02 13:05:10] [DOOM] smrtd
+[2026-05-02 13:05:10] [DOOM] smbta
+[2026-05-02 13:05:10] [DOOM] smbtb
+[2026-05-02 13:05:10] [DOOM] smbtc
+[2026-05-02 13:05:10] [DOOM] smbtd
+[2026-05-02 13:05:10] [DOOM] smgta
+[2026-05-02 13:05:10] [DOOM] smgtb
+[2026-05-02 13:05:10] [DOOM] smgtc
+[2026-05-02 13:05:10] [DOOM] smgtd
+[2026-05-02 13:05:10] [DOOM] pol6a
+[2026-05-02 13:05:10] [DOOM] pol6b
+[2026-05-02 13:05:10] [DOOM] tgrna
+[2026-05-02 13:05:10] [DOOM] tgrnb
+[2026-05-02 13:05:10] [DOOM] tgrnc
+[2026-05-02 13:05:10] [DOOM] tgrnd
+[2026-05-02 13:05:10] [DOOM] tblua
+[2026-05-02 13:05:10] [DOOM] tblub
+[2026-05-02 13:05:10] [DOOM] tbluc
+[2026-05-02 13:05:10] [DOOM] tblud
+[2026-05-02 13:05:10] [DOOM] treda
+[2026-05-02 13:05:10] [DOOM] tredb
+[2026-05-02 13:05:10] [DOOM] tredc
+[2026-05-02 13:05:10] [DOOM] tredd
+[2026-05-02 13:05:10] [DOOM] smt2a
+[2026-05-02 13:05:10] [DOOM] puffa
+[2026-05-02 13:05:10] [DOOM] puffb
+[2026-05-02 13:05:10] [DOOM] puffc
+[2026-05-02 13:05:10] [DOOM] puffd
+[2026-05-02 13:05:10] [DOOM] bluda
+[2026-05-02 13:05:10] [DOOM] bludb
+[2026-05-02 13:05:10] [DOOM] bludc
+[2026-05-02 13:05:10] [DOOM] vislb
+[2026-05-02 13:05:10] [DOOM] vislc
+[2026-05-02 13:05:10] [DOOM] visld
+[2026-05-02 13:05:10] [DOOM] //plsea
+[2026-05-02 13:05:10] [DOOM] plseb
+[2026-05-02 13:05:10] [DOOM] plsec
+[2026-05-02 13:05:10] [DOOM] plsed
+[2026-05-02 13:05:10] [DOOM] plsee
+[2026-05-02 13:05:10] [DOOM] bfe1a
+[2026-05-02 13:05:10] [DOOM] bfe1b
+[2026-05-02 13:05:10] [DOOM] bfe1c
+[2026-05-02 13:05:10] [DOOM] bfe1d
+[2026-05-02 13:05:10] [DOOM] bfe1e
+[2026-05-02 13:05:10] [DOOM] bfe1f
+[2026-05-02 13:05:10] [DOOM] bfe2a
+[2026-05-02 13:05:10] [DOOM] bfe2b
+[2026-05-02 13:05:10] [DOOM] bfe2c
+[2026-05-02 13:05:10] [DOOM] crs1a
+[2026-05-02 13:05:10] [DOOM] crs2a
+[2026-05-02 13:05:10] [DOOM] crs3a
+[2026-05-02 13:05:10] [DOOM] gib0a
+[2026-05-02 13:05:10] [DOOM] gib0b
+[2026-05-02 13:05:10] [DOOM] gib1a
+[2026-05-02 13:05:10] [DOOM] gib1b
+[2026-05-02 13:05:10] [DOOM] gib2a
+[2026-05-02 13:05:10] [DOOM] gib2b
+[2026-05-02 13:05:10] [DOOM] gib3a
+[2026-05-02 13:05:10] [DOOM] gib3b
+[2026-05-02 13:05:10] [DOOM] gib4a
+[2026-05-02 13:05:10] [DOOM] gib4b
+[2026-05-02 13:05:10] [DOOM] gib5a
+[2026-05-02 13:05:10] [DOOM] gib5b
+[2026-05-02 13:05:10] [DOOM] gib6a
+[2026-05-02 13:05:10] [DOOM] gib6b
+[2026-05-02 13:05:10] [DOOM] gib7a
+[2026-05-02 13:05:10] [DOOM] gib7b
+[2026-05-02 13:05:10] [DOOM] gib8a
+[2026-05-02 13:05:10] [DOOM] gib8b
+[2026-05-02 13:05:10] [DOOM] gib9a
+[2026-05-02 13:05:10] [DOOM] gib9b
+[2026-05-02 13:05:10] [DOOM] sgc1a
+[2026-05-02 13:05:10] [DOOM] sgc1b
+[2026-05-02 13:05:10] [DOOM] sgc2a
+[2026-05-02 13:05:10] [DOOM] sgc2b
+[2026-05-02 13:05:10] [DOOM] sgw1a
+[2026-05-02 13:05:10] [DOOM] sgw1b
+[2026-05-02 13:05:10] [DOOM] sgw2a
+[2026-05-02 13:05:10] [DOOM] sgw2b
+[2026-05-02 13:05:10] [DOOM] sqsha
+[2026-05-02 13:05:10] [DOOM] icena
+[2026-05-02 13:05:10] [DOOM] icenb
+[2026-05-02 13:05:10] [DOOM] icenc
+[2026-05-02 13:05:10] [DOOM] icend
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] Game saved.
+[2026-05-02 13:05:10] [DOOM] You got the rocket launcher!
+[2026-05-02 13:05:10] [DOOM] Picked up a rocket.
+[2026-05-02 13:05:12] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260428_193038.png&v=1777686949033 HTTP/1.1" 200 -
+[2026-05-02 13:05:12] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260427_132013.png&v=1777686949033 HTTP/1.1" 200 -
+[2026-05-02 13:06:57] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:06:57] [HTTP] "GET /api/titlepic?file=The_Ultimate_DOOM_dbced57980.png&v=2026-05-02T02%3A52%3A10.935Z HTTP/1.1" 200 -
+[2026-05-02 13:06:57] [HTTP] "POST /api/database HTTP/1.1" 200 -
+[2026-05-02 13:07:01] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260428_193038.png&v=1777691217436 HTTP/1.1" 200 -
+[2026-05-02 13:07:01] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260427_132013.png&v=1777691217436 HTTP/1.1" 200 -
+[2026-05-02 13:08:18] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:08:18] [HTTP] "POST /api/database HTTP/1.1" 200 -
+[2026-05-02 13:08:22] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260428_193038.png&v=1777691298364 HTTP/1.1" 200 -
+[2026-05-02 13:08:22] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260427_132013.png&v=1777691298364 HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/database HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/check-missing-files HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 400 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/refresh-stats HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "POST /api/scan-screenshots HTTP/1.1" 200 -
+[2026-05-02 13:11:10] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:11:11] [HTTP] "POST /api/database HTTP/1.1" 200 -
+[2026-05-02 13:11:15] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260428_193038.png&v=1777691471021 HTTP/1.1" 200 -
+[2026-05-02 13:11:15] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260502_125341.png&v=1777691471021 HTTP/1.1" 200 -
+[2026-05-02 13:11:15] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260427_132013.png&v=1777691471021 HTTP/1.1" 200 -
+[2026-05-02 13:11:17] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260502_125341.png&v=1777691477763 HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET / HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /styles.css HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /doom-entryway-icon.png HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /app.js?v=156 HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /api/titlepic?file=No_Rest_For_the_Living_fc9fc35ed6.png&v=2026-05-01T01%3A50%3A06.168Z HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /api/titlepic?file=The_Ultimate_DOOM_dbced57980.png&v=2026-05-02T02%3A52%3A10.935Z HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /api/titlepic?file=In_the_Doghouse_2b18412ebe.png&v=2026-04-30T10%3A21%3A34.388Z HTTP/1.1" 200 -
+[2026-05-02 13:12:20] [HTTP] "GET /api/titlepic?file=DOOM_II_Hell_on_Earth_02dfdc3f5e.png&v=2026-04-30T02%3A20%3A39.348889%2B00%3A00 HTTP/1.1" 200 -
+[2026-05-02 13:13:40] [APP] Doom Entryway 1.5.7 starting at http://127.0.0.1:8000
+[2026-05-02 13:13:41] [HTTP] "GET / HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /styles.css HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /app.js?v=156 HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /doom-entryway-icon.png HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /api/titlepic?file=The_Ultimate_DOOM_dbced57980.png&v=2026-05-02T02%3A52%3A10.935Z HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /api/titlepic?file=No_Rest_For_the_Living_fc9fc35ed6.png&v=2026-05-01T01%3A50%3A06.168Z HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /api/titlepic?file=In_the_Doghouse_2b18412ebe.png&v=2026-04-30T10%3A21%3A34.388Z HTTP/1.1" 200 -
+[2026-05-02 13:13:41] [HTTP] "GET /api/titlepic?file=DOOM_II_Hell_on_Earth_02dfdc3f5e.png&v=2026-04-30T02%3A20%3A39.348889%2B00%3A00 HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [APP] Doom Entryway 1.5.7 starting at http://127.0.0.1:8000
+[2026-05-02 13:17:39] [HTTP] "GET / HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /styles.css HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /app.js?v=156 HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /doom-entryway-icon.png HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /api/database HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /api/titlepic?file=The_Ultimate_DOOM_dbced57980.png&v=2026-05-02T02%3A52%3A10.935Z HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /api/titlepic?file=DOOM_II_Hell_on_Earth_02dfdc3f5e.png&v=2026-04-30T02%3A20%3A39.348889%2B00%3A00 HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /api/titlepic?file=In_the_Doghouse_2b18412ebe.png&v=2026-04-30T10%3A21%3A34.388Z HTTP/1.1" 200 -
+[2026-05-02 13:17:39] [HTTP] "GET /api/titlepic?file=No_Rest_For_the_Living_fc9fc35ed6.png&v=2026-05-01T01%3A50%3A06.168Z HTTP/1.1" 200 -
+[2026-05-02 13:17:43] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260428_193038.png&v=1777691861942 HTTP/1.1" 200 -
+[2026-05-02 13:17:43] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260427_132013.png&v=1777691861942 HTTP/1.1" 200 -
+[2026-05-02 13:17:43] [HTTP] "GET /api/screenshot?path=%2Fmnt%2FNobara-PC%2FDoom%2Fscreenshots%2FDoom%2FScreenshot_Doom_20260502_125341.png&v=1777691861942 HTTP/1.1" 200 -
