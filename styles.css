@@ -228,6 +228,16 @@ code {
   background: rgba(255,255,255,0.04);
   font-size: 0.83rem;
 }
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
+  padding: 0.32rem 0.5rem;
+  font-size: 0.72rem;
+  min-width: max-content;
+}
 .medal-chip.gold { background: rgba(239,193,79,0.16); color: #ffe8a6; }
 .medal-chip.silver { background: rgba(194,200,212,0.18); color: #eff3fb; }
 .medal-chip.bronze { background: rgba(205,127,50,0.18); color: #ffd4ad; }

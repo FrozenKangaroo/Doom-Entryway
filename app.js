@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.12";
+const APP_VERSION = "1.5.13";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
