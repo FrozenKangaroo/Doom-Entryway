@@ -1,4 +1,4 @@
-# Doom Entryway 1.5.7
+# Doom Entryway 1.5.8
 
 Doom Entryway is a local-first web app for tracking classic DOOM playthroughs. It manages IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, launcher presets, WebDAV sync, and debug logs from a browser-based interface.
 
@@ -82,6 +82,7 @@ http://localhost:8000
 - Launch DOOM directly from WAD entries.
 - Configure source port paths and launch-related folders in Settings.
 - Use global mods and additional files when launching.
+- Collapse or expand Additional files, Mod files, and Command line preview sections in the launch dialog so long mod lists do not push the Launch button out of easy reach.
 - Launch output is captured into the Log / Debug page when possible.
 - Death tracking is protected against refresh races so live monitor death counts are not overwritten by stale browser state.
 

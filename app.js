@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.7";
+const APP_VERSION = "1.5.8";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -37,7 +37,7 @@ const state = {
   mapInputMode: 'counts',
   databaseReady: false,
   pendingNewWadMetadata: null,
-  launchDialog: { wadId: '', globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '' },
+  launchDialog: { wadId: '', globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '', collapsedSections: { additional: true, mods: true, command: true } },
   debug: { lines: [], logPath: '', loadedAt: '', loading: false, error: '' },
 };
 
@@ -5102,7 +5102,7 @@ const LAUNCH_SECTION_LABELS = { map: 'Map file', additional: 'Additional files',
 
 function getActiveLaunchSelection(wadId = '') {
   if (!state.launchDialog || state.launchDialog.wadId !== wadId) {
-    return { wadId, globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '' };
+    return { wadId, globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '', collapsedSections: { additional: true, mods: true, command: true } };
   }
   return state.launchDialog;
 }
@@ -5191,6 +5191,34 @@ function renderLaunchSectionOrder(order) {
   </div>`).join('')}</div>`;
 }
 
+function renderLaunchCollapsibleSection({ sectionKey, title, description = '', summary = '', collapsed = false, content = '' }) {
+  const safeKey = escapeJsString(sectionKey);
+  const expanded = !collapsed;
+  return `<section class="summary-card launch-picker-card launch-collapsible-card ${collapsed ? 'is-collapsed' : ''}">
+    <div class="section-bar compact-section-bar launch-collapsible-head">
+      <div>
+        <h4>${escapeHtml(title)}</h4>
+        ${description ? `<p class="muted">${description}</p>` : ''}
+        ${summary ? `<p class="muted launch-section-summary">${escapeHtml(summary)}</p>` : ''}
+      </div>
+      <button type="button" class="secondary-button mini-button launch-collapse-button" aria-expanded="${expanded ? 'true' : 'false'}" onclick="window.appActions.toggleLaunchDialogSection('${safeKey}')">${collapsed ? 'Expand' : 'Collapse'}</button>
+    </div>
+    <div class="launch-collapsible-body" ${collapsed ? 'hidden' : ''}>${content}</div>
+  </section>`;
+}
+
+function launchSectionSummary(sectionKey, files = [], selectedPaths = []) {
+  const selectedCount = uniqueExistingOrder(selectedPaths, files).length;
+  const totalCount = Array.isArray(files) ? files.length : 0;
+  if (sectionKey === 'mods') {
+    return `${selectedCount} of ${totalCount} mod file${totalCount === 1 ? '' : 's'} selected`;
+  }
+  if (sectionKey === 'additional') {
+    return `${selectedCount} of ${totalCount} additional file${totalCount === 1 ? '' : 's'} selected`;
+  }
+  return '';
+}
+
 async function scanLaunchFilesForWad(wad) {
   const modsFolder = getLaunchFolderSetting('modsFolder');
   const additionalRoot = getLaunchFolderSetting('additionalFilesFolder');
@@ -5237,20 +5265,43 @@ function rerenderLaunchDialogBody(wadId) {
       <div class="section-bar compact-section-bar"><h4>Map file</h4></div>
       <p class="muted">${payload.isIwadLaunch ? 'IWAD launch: no separate map file is loaded.' : escapeHtml(payload.pwadPath || 'No WAD/PK3 associated yet.')}</p>
     </section>
-    <section class="summary-card launch-picker-card">
-      <div class="section-bar compact-section-bar"><h4>Additional files</h4><p class="muted">WAD-specific files from <code>${escapeHtml(launchState.additionalFilesFolder || 'not set')}</code>.</p></div>
-      ${renderLaunchFilePicker('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || [])}
-    </section>
-    <section class="summary-card launch-picker-card">
-      <div class="section-bar compact-section-bar"><h4>Mod files</h4><p class="muted">Global mods from <code>${escapeHtml(launchState.modsFolder || 'not set')}</code>.</p></div>
-      ${renderLaunchFilePicker('mods', launchState.globalMods || [], launchState.selectedMods || [])}
-    </section>
-    <label class="full-span">Command line preview
-      <textarea id="launchCommandPreview" class="command-preview" readonly rows="6">${escapeHtml(buildLaunchCommandPreview(wad))}</textarea>
-    </label>
+    ${renderLaunchCollapsibleSection({
+      sectionKey: 'additional',
+      title: 'Additional files',
+      description: `WAD-specific files from <code>${escapeHtml(launchState.additionalFilesFolder || 'not set')}</code>.`,
+      summary: launchSectionSummary('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []),
+      collapsed: Boolean(launchState.collapsedSections?.additional),
+      content: renderLaunchFilePicker('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []),
+    })}
+    ${renderLaunchCollapsibleSection({
+      sectionKey: 'mods',
+      title: 'Mod files',
+      description: `Global mods from <code>${escapeHtml(launchState.modsFolder || 'not set')}</code>.`,
+      summary: launchSectionSummary('mods', launchState.globalMods || [], launchState.selectedMods || []),
+      collapsed: Boolean(launchState.collapsedSections?.mods),
+      content: renderLaunchFilePicker('mods', launchState.globalMods || [], launchState.selectedMods || []),
+    })}
+    ${renderLaunchCollapsibleSection({
+      sectionKey: 'command',
+      title: 'Command line preview',
+      summary: 'Show or hide the exact command Doom Entryway will run.',
+      collapsed: Boolean(launchState.collapsedSections?.command),
+      content: `<textarea id="launchCommandPreview" class="command-preview" readonly rows="6">${escapeHtml(buildLaunchCommandPreview(wad))}</textarea>`,
+    })}
   `;
   const launchButton = document.getElementById('launchDialogLaunchButton');
   if (launchButton) launchButton.disabled = errors.length > 0;
+}
+
+
+function toggleLaunchDialogSection(sectionKey) {
+  const launchState = state.launchDialog;
+  if (!launchState?.wadId) return;
+  const key = ['additional', 'mods', 'command'].includes(sectionKey) ? sectionKey : '';
+  if (!key) return;
+  launchState.collapsedSections = { additional: true, mods: true, command: true, ...(launchState.collapsedSections || {}) };
+  launchState.collapsedSections[key] = !launchState.collapsedSections[key];
+  rerenderLaunchDialogBody(launchState.wadId);
 }
 
 function toggleLaunchFile(section, path, checked) {
@@ -5343,6 +5394,7 @@ async function openLaunchDialog(wadId) {
     sectionOrder: savedLaunchSettings.sectionOrder || ['map', 'additional', 'mods'],
     modsFolder: '',
     additionalFilesFolder: '',
+    collapsedSections: { additional: true, mods: true, command: true },
   };
   body.innerHTML = '<p class="muted">Scanning Mods and Additional Files folders...</p>';
   dialog.showModal();
@@ -5571,6 +5623,7 @@ window.appActions = {
   toggleLaunchFile,
   moveLaunchFile,
   moveLaunchSection,
+  toggleLaunchDialogSection,
   openTestWadDialog,
   updateTestWadPreview,
   launchTestWad,

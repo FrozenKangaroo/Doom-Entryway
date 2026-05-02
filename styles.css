@@ -1277,6 +1277,13 @@ code {
 .launch-warning ul { margin: 0.4rem 0 0; padding-left: 1.25rem; }
 
 .launch-picker-card { padding: 0.9rem; }
+
+.launch-collapsible-head { align-items: flex-start; gap: 0.75rem; }
+.launch-collapsible-head > div { min-width: 0; }
+.launch-section-summary { margin-top: 0.3rem; font-size: 0.82rem; }
+.launch-collapse-button { white-space: nowrap; }
+.launch-collapsible-body { margin-top: 0.65rem; }
+.launch-collapsible-card.is-collapsed { padding-bottom: 0.75rem; }
 .launch-file-list, .launch-order-list { display: grid; gap: 0.55rem; margin-top: 0.55rem; }
 .launch-file-row, .launch-order-row {
   display: grid;
