@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.13";
+const APP_VERSION = "1.5.14";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -65,6 +65,10 @@ initApp();
 
 async function initApp() {
   await loadState();
+  if (!state.databaseReady) {
+    renderBackendRequiredError();
+    return;
+  }
   wireEvents();
   activateNav(state.currentView === 'home' ? 'home' : state.currentView);
   if (state.currentView === 'home') {
@@ -4813,18 +4817,39 @@ async function loadState() {
     applyAppSettingsToUiState();
     state.databaseReady = true;
 
-    // Server JSON is the only main database path now.
-    // Do not auto-read old browser localStorage, because Firefox can make it look like
-    // the app is still using browser storage instead of doom_tracker_database.json.
   } catch (error) {
     console.error(error);
     state.app = { wads: [], folders: [], settings: normalizeImportedSettings({}) };
     applyAppSettingsToUiState();
     state.databaseReady = false;
-    showAlert('error', 'Could not load doom_tracker_database.json from the local server. Make sure you opened the app through local_server.py.');
   }
 }
 
+function renderBackendRequiredError() {
+  [homeView, libraryView, wadDetailView, statsView, settingsView, debugView, aboutView].forEach((view) => view?.classList.remove('active'));
+  homeView?.classList.add('active');
+  pageTitle.textContent = 'Local server required';
+  pageSubtitle.textContent = 'Doom Entryway must be started through the Python backend.';
+  document.querySelectorAll('.nav-button, .topbar-actions button').forEach((button) => {
+    button.disabled = true;
+    button.classList.add('disabled');
+  });
+  alertsEl.innerHTML = '';
+  homeView.innerHTML = `
+    <section class="about-shell">
+      <div class="section-card">
+        <p class="eyebrow">Startup blocked</p>
+        <h3>Do not open <code>index.html</code> directly</h3>
+        <p class="muted-text">Doom Entryway needs <code>local_server.py</code> so it can read and write <code>doom_tracker_database.json</code>, access local save folders, and run filesystem features safely.</p>
+        <div class="upload-callout">
+          <strong>Correct start method</strong><br />
+          Linux: <code>./start-linux.sh</code><br />
+          Windows: <code>start-windows.bat</code><br />
+          Manual: <code>python local_server.py</code>, then open <code>http://localhost:8000</code>
+        </div>
+      </div>
+    </section>`;
+}
 
 function mergeDeathCountsFromExternalAppState(externalApp) {
   const externalWads = Array.isArray(externalApp?.wads) ? externalApp.wads : [];

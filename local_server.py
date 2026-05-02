@@ -49,7 +49,7 @@ SETTINGS_PATH = ROOT / "settings.json"
 DEBUG_LOG_PATH = ROOT / "doom_entryway_debug.log"
 MAX_MEMORY_LOG_LINES = 1200
 MAX_LOG_FILE_BYTES = 2_000_000
-APP_VERSION = "1.5.12"
+APP_VERSION = "1.5.14"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"
@@ -287,7 +287,7 @@ def _monitor_doom_output_for_deaths(proc: subprocess.Popen, wad_id: str) -> None
                 _increment_map_death_count(wad_id, current_map, line)
             except Exception as exc:
                 _append_debug_log(f"Death monitor failed: {exc}", "ERROR")
-                print(f"Doom Tracker death monitor failed: {exc}", flush=True)
+                print(f"Doom Entryway death monitor failed: {exc}", flush=True)
     try:
         proc.wait(timeout=1)
     except Exception:
@@ -348,7 +348,7 @@ def _increment_map_death_count(wad_id: str, level_name: str, message: str) -> No
     run["updatedAt"] = now
     wad["updatedAt"] = now
     _save_database(app)
-    print(f"Doom Tracker: counted death for {wad.get('title') or wad_id} {wanted}: {message}", flush=True)
+    print(f"Doom Entryway: counted death for {wad.get('title') or wad_id} {wanted}: {message}", flush=True)
 
 def _safe_slug(value: str, fallback: str = "titlepic") -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip()).strip("._-")
@@ -501,7 +501,7 @@ def _save_settings(settings: dict) -> None:
     tmp_path.replace(SETTINGS_PATH)
 
 
-def _split_app_settings(app: dict) -> tuple[dict, dict]:
+def _split_runtime_settings(app: dict) -> tuple[dict, dict]:
     if not isinstance(app, dict):
         return app, {}
     database_app = dict(app)
@@ -509,49 +509,30 @@ def _split_app_settings(app: dict) -> tuple[dict, dict]:
     return database_app, settings if isinstance(settings, dict) else {}
 
 
-def _merge_local_settings(app: dict) -> dict:
+def _attach_local_settings(app: dict) -> dict:
     if not isinstance(app, dict):
         app = _empty_database()
     app = dict(app)
-    db_settings = app.pop("settings", None)
-    local_settings = _load_settings()
-
-    # One-time migration: v1.0.0 and older stored settings inside the synced database.
-    # Move them into settings.json so each PC can keep its own paths and WebDAV credentials.
-    if isinstance(db_settings, dict) and db_settings:
-        if SETTINGS_PATH.exists():
-            # Once settings.json exists, the synced database must not back-fill or overwrite
-            # machine-specific settings from another PC.
-            merged = local_settings
-        else:
-            # First-run migration from the old inline settings format.
-            merged = _merge_settings_preserving_tombstones({}, db_settings)
-            _save_settings(merged)
-        local_settings = merged
-        try:
-            _save_database(app)
-        except Exception:
-            pass
-
-    app["settings"] = local_settings
+    app.pop("settings", None)
+    app["settings"] = _load_settings()
     return app
 
 
 def _load_database() -> dict:
     if not DATABASE_PATH.exists():
-        return _merge_local_settings(_empty_database())
+        return _attach_local_settings(_empty_database())
 
     with DATABASE_PATH.open("r", encoding="utf-8") as fh:
         payload = json.load(fh)
 
     app = payload.get("app") if isinstance(payload, dict) and isinstance(payload.get("app"), dict) else payload
     if not isinstance(app, dict):
-        return _merge_local_settings(_empty_database())
+        return _attach_local_settings(_empty_database())
 
     if not isinstance(app.get("wads"), list):
         app["wads"] = []
 
-    app = _merge_local_settings(app)
+    app = _attach_local_settings(app)
 
     if _migrate_embedded_titlepics(app):
         _save_database(app)
@@ -566,12 +547,12 @@ def _save_database(app: dict) -> None:
     if not isinstance(app.get("wads"), list):
         raise ValueError("Database payload must include a wads array.")
 
-    database_app, incoming_settings = _split_app_settings(app)
+    database_app, incoming_settings = _split_runtime_settings(app)
     if incoming_settings:
         current_settings = _load_settings()
         _save_settings(_merge_settings_preserving_tombstones(current_settings, incoming_settings))
 
-    # Keep settings out of doom_tracker_database.json so WebDAV database sync cannot
+    # Keep runtime settings out of doom_tracker_database.json so WebDAV database sync cannot
     # overwrite machine-specific local paths, credentials, or sync state.
     migrate_view = dict(database_app)
     migrate_view["settings"] = _load_settings()

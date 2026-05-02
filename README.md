@@ -1,4 +1,4 @@
-# Doom Entryway 1.5.13
+# Doom Entryway 1.5.14
 
 Doom Entryway is a local-first web app for tracking classic DOOM playthroughs. It manages IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, launcher presets, WebDAV sync, and debug logs from a browser-based interface.
 
