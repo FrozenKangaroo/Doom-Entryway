@@ -49,7 +49,7 @@ SETTINGS_PATH = ROOT / "settings.json"
 DEBUG_LOG_PATH = ROOT / "doom_entryway_debug.log"
 MAX_MEMORY_LOG_LINES = 1200
 MAX_LOG_FILE_BYTES = 2_000_000
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.5.11"
 
 
 TITLEPIC_API_PREFIX = "/api/titlepic"

@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.10";
+const APP_VERSION = "1.5.11";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -39,6 +39,7 @@ const state = {
   pendingNewWadMetadata: null,
   launchDialog: { wadId: '', globalMods: [], additionalFiles: [], selectedMods: [], selectedAdditionalFiles: [], sectionOrder: ['map', 'additional', 'mods'], modsFolder: '', additionalFilesFolder: '', collapsedSections: { additional: true, mods: true, command: true } },
   debug: { lines: [], logPath: '', loadedAt: '', loading: false, error: '' },
+  defaultModsManager: { files: [], scannedFolder: '', loading: false, error: '' },
 };
 
 const pageTitle = document.getElementById('pageTitle');
@@ -1519,6 +1520,106 @@ function renderStats() {
   `;
 }
 
+
+function normalizeDefaultMods(value = []) {
+  const seen = new Set();
+  return (Array.isArray(value) ? value : []).map((entry) => String(entry || '').trim()).filter((entry) => {
+    const key = launchFileKey(entry);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getDefaultMods() {
+  const settings = normalizeImportedSettings(state.app?.settings || {});
+  state.app.settings = settings;
+  return normalizeDefaultMods(settings.defaultMods || []);
+}
+
+function setDefaultMods(paths, { persist = true } = {}) {
+  if (!state.app || typeof state.app !== 'object') state.app = { wads: [], folders: [], settings: {} };
+  state.app.settings = normalizeImportedSettings({
+    ...(state.app.settings || {}),
+    defaultMods: normalizeDefaultMods(paths),
+  });
+  if (persist) saveState();
+}
+
+function renderDefaultModsManager() {
+  const manager = state.defaultModsManager || { files: [], scannedFolder: '', loading: false, error: '' };
+  const defaultMods = getDefaultMods();
+  const scannedFiles = Array.isArray(manager.files) ? manager.files : [];
+  if (manager.loading) return '<p class="muted">Scanning the Mods folder...</p>';
+  const status = manager.error ? `<div class="launch-warning"><strong>Could not scan mods:</strong> ${escapeHtml(manager.error)}</div>` : '';
+  if (!scannedFiles.length) {
+    const savedList = defaultMods.length
+      ? `<div class="launch-file-list">${defaultMods.map((path, index) => `<div class="launch-file-row selected"><strong>${index + 1}. ${escapeHtml(launchFileLabel(path))}</strong><code title="${escapeHtml(path)}">${escapeHtml(path)}</code><div></div></div>`).join('')}</div>`
+      : '<p class="muted">No default mods selected yet. Scan the Mods folder, then tick the mods you want and arrange the order.</p>';
+    return `${status}${savedList}`;
+  }
+  return `${status}
+    <div class="section-bar compact-section-bar">
+      <p class="muted">${uniqueExistingOrder(defaultMods, scannedFiles).length} of ${scannedFiles.length} mod file${scannedFiles.length === 1 ? '' : 's'} selected as defaults.</p>
+      <div class="button-row">
+        <button type="button" class="secondary-button mini-button" onclick="window.appActions.selectAllDefaultMods()">Select All</button>
+        <button type="button" class="secondary-button mini-button" onclick="window.appActions.clearDefaultMods()">Unselect All</button>
+      </div>
+    </div>
+    ${renderDefaultModsPicker(scannedFiles, defaultMods)}`;
+}
+
+function renderDefaultModsPicker(files, selectedPaths) {
+  const normalizedSelected = uniqueExistingOrder(selectedPaths, files);
+  const selected = new Set(normalizedSelected.map(launchFileKey));
+  const ordered = [
+    ...normalizedSelected.map((path) => files.find((file) => launchFileKey(file.path) === launchFileKey(path))).filter(Boolean),
+    ...files.filter((file) => !selected.has(launchFileKey(file.path))),
+  ];
+  return `<div class="launch-file-list default-mods-list">${ordered.map((file) => {
+    const checked = selected.has(launchFileKey(file.path));
+    const selectedIndex = normalizedSelected.findIndex((path) => launchFileKey(path) === launchFileKey(file.path));
+    return `<div class="launch-file-row ${checked ? 'selected' : ''}">
+      <label class="checkbox-line launch-file-check"><span><input type="checkbox" ${checked ? 'checked' : ''} onchange="window.appActions.toggleDefaultMod('${escapeJsString(file.path)}', this.checked)" /> ${escapeHtml(launchFileLabel(file))}</span></label>
+      <code title="${escapeHtml(file.path)}">${escapeHtml(file.relativePath || file.path)}</code>
+      <div class="launch-file-actions">
+        <button type="button" class="secondary-button mini-button" ${!checked || selectedIndex <= 0 ? 'disabled' : ''} onclick="window.appActions.moveDefaultMod('${escapeJsString(file.path)}', -1)">↑</button>
+        <button type="button" class="secondary-button mini-button" ${!checked || selectedIndex < 0 || selectedIndex >= normalizedSelected.length - 1 ? 'disabled' : ''} onclick="window.appActions.moveDefaultMod('${escapeJsString(file.path)}', 1)">↓</button>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function refreshDefaultModsManager() {
+  const container = document.getElementById('defaultModsManager');
+  if (container) container.innerHTML = renderDefaultModsManager();
+}
+
+async function scanDefaultModsForSettings() {
+  state.defaultModsManager = { ...(state.defaultModsManager || {}), loading: true, error: '' };
+  refreshDefaultModsManager();
+  try {
+    const settings = normalizeImportedSettings(state.app?.settings || {});
+    const response = await fetch('/api/scan-launch-files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modsFolder: settings.modsFolder || '', additionalFilesFolder: '__doom_entryway_skip_additional_scan__' }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not scan Mods folder.');
+    state.defaultModsManager = {
+      files: Array.isArray(payload.globalMods) ? payload.globalMods : [],
+      scannedFolder: payload.modsFolder || settings.modsFolder || '',
+      loading: false,
+      error: '',
+    };
+    setDefaultMods(uniqueExistingOrder(getDefaultMods(), state.defaultModsManager.files), { persist: true });
+  } catch (error) {
+    state.defaultModsManager = { files: [], scannedFolder: '', loading: false, error: error.message || 'Could not scan Mods folder.' };
+  }
+  refreshDefaultModsManager();
+}
+
 function renderSettings() {
   if (state.currentView !== 'settings') return;
   const settings = normalizeImportedSettings(state.app?.settings || {});
@@ -1537,6 +1638,7 @@ function renderSettings() {
     <form id="settingsForm" class="settings-form" onsubmit="window.appActions.saveSettings(event)">
       <div class="settings-tabs" role="tablist" aria-label="Settings sections">
         <button type="button" id="settingsMainTab" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settingsMainPanel" onclick="window.appActions.showSettingsTab('main')">Main Settings</button>
+        <button type="button" id="settingsDefaultModsTab" class="settings-tab" role="tab" aria-selected="false" aria-controls="settingsDefaultModsPanel" onclick="window.appActions.showSettingsTab('defaultMods')">Default Mods</button>
         <button type="button" id="settingsWebdavTab" class="settings-tab" role="tab" aria-selected="false" aria-controls="settingsWebdavPanel" onclick="window.appActions.showSettingsTab('webdav')">WebDAV Sync</button>
       </div>
 
@@ -1587,7 +1689,7 @@ function renderSettings() {
           <div class="section-bar compact-section-bar">
             <div>
               <h3>Launch Settings</h3>
-              <p class="muted">Early launcher groundwork. These paths will be used when Doom Entryway starts launching WADs directly.</p>
+              <p class="muted">Source port, global mod folder, and WAD-specific additional file folder used by the launch dialog.</p>
             </div>
           </div>
           <label>
@@ -1632,6 +1734,23 @@ function renderSettings() {
           </div>
           <p class="field-help warning-text">Warning: this permanently deletes unassociated .wad/.pk3 files, companion .txt files, and titlepic .png files from disk. This cannot be undone.</p>
         </section>
+      </div>
+
+      <div id="settingsDefaultModsPanel" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsDefaultModsTab">
+        <div class="section-bar compact-section-bar">
+          <div>
+            <h3>Default Mods</h3>
+            <p class="muted">Choose and order the global mods Doom Entryway should use as the starting loadout for WADs with no saved launcher mod list.</p>
+          </div>
+          <div class="button-row">
+            <button type="button" class="secondary-button" onclick="window.appActions.scanDefaultModsForSettings()">Scan Mods Folder</button>
+            <button type="button" class="secondary-button" onclick="window.appActions.clearDefaultMods()">Clear Defaults</button>
+          </div>
+        </div>
+        <div class="upload-callout">Using Mods folder: <code>${escapeHtml(settings.modsFolder || 'not set')}</code>. Change the folder in Main Settings, save, then scan again.</div>
+        <div id="defaultModsManager">
+          ${renderDefaultModsManager()}
+        </div>
       </div>
 
       <div id="settingsWebdavPanel" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsWebdavTab">
@@ -4394,6 +4513,7 @@ function normalizeImportedSettings(settings) {
     gameExecutable: String(settings?.gameExecutable || '').trim(),
     modsFolder: String(settings?.modsFolder || '').trim(),
     additionalFilesFolder: String(settings?.additionalFilesFolder || '').trim(),
+    defaultMods: normalizeDefaultMods(settings?.defaultMods),
     webdavEnabled,
     webdavUrl: String(settings?.webdavUrl || '').trim(),
     webdavRemotePath: String(settings?.webdavRemotePath || '').trim(),
@@ -5262,6 +5382,23 @@ function renderLaunchCollapsibleSection({ sectionKey, title, description = '', s
   </section>`;
 }
 
+function renderLaunchFileSectionToolbar(sectionKey, files = [], selectedPaths = []) {
+  const totalCount = Array.isArray(files) ? files.length : 0;
+  const selectedCount = uniqueExistingOrder(selectedPaths, files).length;
+  const sectionLabel = sectionKey === 'mods' ? 'mods' : 'files';
+  const defaultButton = sectionKey === 'mods'
+    ? `<button type="button" class="secondary-button mini-button" onclick="window.appActions.applyDefaultModsToLaunch()">Apply Default Mods</button>`
+    : '';
+  return `<div class="section-bar compact-section-bar launch-file-toolbar">
+    <p class="muted">${selectedCount} / ${totalCount} selected</p>
+    <div class="button-row">
+      ${defaultButton}
+      <button type="button" class="secondary-button mini-button" ${!totalCount ? 'disabled' : ''} onclick="window.appActions.selectAllLaunchFiles('${sectionKey}')">Select All</button>
+      <button type="button" class="secondary-button mini-button" ${!selectedCount ? 'disabled' : ''} onclick="window.appActions.clearLaunchFiles('${sectionKey}')">Unselect All</button>
+    </div>
+  </div>`;
+}
+
 function launchSectionSummary(sectionKey, files = [], selectedPaths = []) {
   const selectedCount = uniqueExistingOrder(selectedPaths, files).length;
   const totalCount = Array.isArray(files) ? files.length : 0;
@@ -5326,7 +5463,7 @@ function rerenderLaunchDialogBody(wadId) {
       description: `WAD-specific files from <code>${escapeHtml(launchState.additionalFilesFolder || 'not set')}</code>.`,
       summary: launchSectionSummary('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []),
       collapsed: Boolean(launchState.collapsedSections?.additional),
-      content: renderLaunchFilePicker('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []),
+      content: renderLaunchFileSectionToolbar('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []) + renderLaunchFilePicker('additional', launchState.additionalFiles || [], launchState.selectedAdditionalFiles || []),
     })}
     ${renderLaunchCollapsibleSection({
       sectionKey: 'mods',
@@ -5334,7 +5471,7 @@ function rerenderLaunchDialogBody(wadId) {
       description: `Global mods from <code>${escapeHtml(launchState.modsFolder || 'not set')}</code>.`,
       summary: launchSectionSummary('mods', launchState.globalMods || [], launchState.selectedMods || []),
       collapsed: Boolean(launchState.collapsedSections?.mods),
-      content: renderLaunchFilePicker('mods', launchState.globalMods || [], launchState.selectedMods || []),
+      content: renderLaunchFileSectionToolbar('mods', launchState.globalMods || [], launchState.selectedMods || []) + renderLaunchFilePicker('mods', launchState.globalMods || [], launchState.selectedMods || []),
     })}
     ${renderLaunchCollapsibleSection({
       sectionKey: 'command',
@@ -5384,6 +5521,34 @@ function moveLaunchFile(section, path, direction) {
   if (index < 0 || next < 0 || next >= current.length) return;
   [current[index], current[next]] = [current[next], current[index]];
   launchState[key] = current;
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function selectAllLaunchFiles(section) {
+  const launchState = state.launchDialog;
+  if (!launchState?.wadId) return;
+  const isMods = section === 'mods';
+  const key = isMods ? 'selectedMods' : 'selectedAdditionalFiles';
+  const files = isMods ? (launchState.globalMods || []) : (launchState.additionalFiles || []);
+  launchState[key] = files.map((file) => file.path).filter(Boolean);
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function clearLaunchFiles(section) {
+  const launchState = state.launchDialog;
+  if (!launchState?.wadId) return;
+  const key = section === 'mods' ? 'selectedMods' : 'selectedAdditionalFiles';
+  launchState[key] = [];
+  saveLauncherSettingsForWad(launchState.wadId, { persist: true });
+  rerenderLaunchDialogBody(launchState.wadId);
+}
+
+function applyDefaultModsToLaunch() {
+  const launchState = state.launchDialog;
+  if (!launchState?.wadId) return;
+  launchState.selectedMods = mergeSelectionWithFiles(getDefaultMods(), launchState.globalMods || []);
   saveLauncherSettingsForWad(launchState.wadId, { persist: true });
   rerenderLaunchDialogBody(launchState.wadId);
 }
@@ -5460,7 +5625,9 @@ async function openLaunchDialog(wadId) {
     state.launchDialog.modsFolder = files.modsFolder;
     state.launchDialog.additionalFilesFolder = files.additionalFilesFolder;
     const savedLaunchSettings = normalizeLauncherSettings(wad.launcherSettings || {});
-    state.launchDialog.selectedMods = mergeSelectionWithFiles(savedLaunchSettings.selectedMods || [], files.globalMods);
+    const hasSavedModList = Boolean(savedLaunchSettings.updatedAt) || (Array.isArray(savedLaunchSettings.selectedMods) && savedLaunchSettings.selectedMods.length > 0);
+    const startingMods = hasSavedModList ? (savedLaunchSettings.selectedMods || []) : getDefaultMods();
+    state.launchDialog.selectedMods = mergeSelectionWithFiles(startingMods, files.globalMods);
     state.launchDialog.selectedAdditionalFiles = savedLaunchSettings.selectedAdditionalFiles?.length
       ? mergeSelectionWithFiles(savedLaunchSettings.selectedAdditionalFiles, files.additionalFiles)
       : mergeSelectionWithFiles(files.additionalFiles.map((file) => file.path), files.additionalFiles);
@@ -5678,6 +5845,9 @@ window.appActions = {
   toggleLaunchFile,
   moveLaunchFile,
   moveLaunchSection,
+  selectAllLaunchFiles,
+  clearLaunchFiles,
+  applyDefaultModsToLaunch,
   toggleLaunchDialogSection,
   openTestWadDialog,
   updateTestWadPreview,
@@ -5723,19 +5893,58 @@ window.appActions = {
   },
   saveLibraryViewSettings: () => persistLibraryViewSettings(),
   showSettingsTab: (tabName) => {
-    const target = tabName === 'webdav' ? 'webdav' : 'main';
-    const mainTab = document.getElementById('settingsMainTab');
-    const webdavTab = document.getElementById('settingsWebdavTab');
-    const mainPanel = document.getElementById('settingsMainPanel');
-    const webdavPanel = document.getElementById('settingsWebdavPanel');
-    if (!mainTab || !webdavTab || !mainPanel || !webdavPanel) return;
-    const showWebdav = target === 'webdav';
-    mainTab.classList.toggle('active', !showWebdav);
-    webdavTab.classList.toggle('active', showWebdav);
-    mainTab.setAttribute('aria-selected', showWebdav ? 'false' : 'true');
-    webdavTab.setAttribute('aria-selected', showWebdav ? 'true' : 'false');
-    mainPanel.classList.toggle('active', !showWebdav);
-    webdavPanel.classList.toggle('active', showWebdav);
+    const target = tabName === 'webdav' ? 'webdav' : (tabName === 'defaultMods' ? 'defaultMods' : 'main');
+    const tabs = {
+      main: document.getElementById('settingsMainTab'),
+      defaultMods: document.getElementById('settingsDefaultModsTab'),
+      webdav: document.getElementById('settingsWebdavTab'),
+    };
+    const panels = {
+      main: document.getElementById('settingsMainPanel'),
+      defaultMods: document.getElementById('settingsDefaultModsPanel'),
+      webdav: document.getElementById('settingsWebdavPanel'),
+    };
+    if (!tabs.main || !tabs.defaultMods || !tabs.webdav || !panels.main || !panels.defaultMods || !panels.webdav) return;
+    Object.keys(tabs).forEach((key) => {
+      const active = key === target;
+      tabs[key].classList.toggle('active', active);
+      tabs[key].setAttribute('aria-selected', active ? 'true' : 'false');
+      panels[key].classList.toggle('active', active);
+    });
+    if (target === 'defaultMods' && !state.defaultModsManager.loading && !(state.defaultModsManager.files || []).length && !state.defaultModsManager.error) {
+      setTimeout(() => scanDefaultModsForSettings(), 0);
+    }
+  },
+  scanDefaultModsForSettings,
+  toggleDefaultMod: (path, checked) => {
+    const current = getDefaultMods();
+    const key = launchFileKey(path);
+    const exists = current.some((entry) => launchFileKey(entry) === key);
+    if (checked && !exists) current.push(path);
+    if (!checked) {
+      const index = current.findIndex((entry) => launchFileKey(entry) === key);
+      if (index >= 0) current.splice(index, 1);
+    }
+    setDefaultMods(current, { persist: true });
+    refreshDefaultModsManager();
+  },
+  moveDefaultMod: (path, direction) => {
+    const current = getDefaultMods();
+    const index = current.findIndex((entry) => launchFileKey(entry) === launchFileKey(path));
+    const next = index + Number(direction || 0);
+    if (index < 0 || next < 0 || next >= current.length) return;
+    [current[index], current[next]] = [current[next], current[index]];
+    setDefaultMods(current, { persist: true });
+    refreshDefaultModsManager();
+  },
+  selectAllDefaultMods: () => {
+    const files = state.defaultModsManager?.files || [];
+    setDefaultMods(files.map((file) => file.path), { persist: true });
+    refreshDefaultModsManager();
+  },
+  clearDefaultMods: () => {
+    setDefaultMods([], { persist: true });
+    refreshDefaultModsManager();
   },
   saveSettings: (event) => {
     event?.preventDefault?.();
@@ -5754,6 +5963,7 @@ window.appActions = {
       gameExecutable: formData.get('gameExecutable'),
       modsFolder: formData.get('modsFolder'),
       additionalFilesFolder: formData.get('additionalFilesFolder'),
+      defaultMods: normalizeDefaultMods(state.app?.settings?.defaultMods),
       webdavEnabled: formData.get('webdavEnabled') === 'on',
       webdavUrl: formData.get('webdavUrl'),
       webdavRemotePath: formData.get('webdavRemotePath'),

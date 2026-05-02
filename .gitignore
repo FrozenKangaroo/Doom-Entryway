@@ -3,12 +3,14 @@ doom_tracker_database.json
 settings.json
 webdav_settings.json
 sync_manifest.json
+doom_entryway_debug.log
 
 # User data folders
 screenshots/
 titlepics/
 saves/
 wads/
+Doom-Entryway.wiki/
 
 # Doom files
 *.wad
@@ -19,6 +21,7 @@ wads/
 *.tmp
 *.uploading
 *.partial
+*.log
 
 # Archives
 *.zip

@@ -1,4 +1,4 @@
-# Doom Entryway 1.5.8
+# Doom Entryway 1.5.11
 
 Doom Entryway is a local-first web app for tracking classic DOOM playthroughs. It manages IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, launcher presets, WebDAV sync, and debug logs from a browser-based interface.
 
@@ -46,6 +46,7 @@ http://localhost:8000
 - Track per-map kills, items, secrets, level time, difficulty, source, author, notes, and medal status.
 - Medal support for gold, silver, bronze, no medal, and unplayed maps.
 - Manual map editing with either raw counts or percentage entry.
+- Manual level time entry accepts normal time formats such as `7:32`, `1:02:15`, `452s`, or raw tics with a `tics` suffix.
 - Library quick filters from WAD cards, including play state, IWAD, type, author, source port, difficulty, tags, and stat chips.
 - Clickable progress counts that open a map list popup with names, authors, and latest run results.
 - Custom tags with search and quick-filter support.
@@ -132,3 +133,8 @@ Keeping settings separate means local paths and WebDAV credentials do not have t
 - This is a local-first personal tracking app, not a hosted web service.
 - Keep backups of your database, especially before testing sync changes or large library reorganisations.
 - Some internal filenames still use the older `doom_tracker` naming for compatibility with existing data, but the user-facing app name is Doom Entryway.
+
+
+## Default Mods
+
+The Settings page includes a **Default Mods** tab. Scan your configured Mods folder, tick the global mods you usually want, and use the arrow buttons to set their load order. When you open the launch dialog for a WAD that has no saved launcher mod list yet, Doom Entryway preselects those defaults automatically. The launch dialog also includes **Apply Default Mods**, **Select All**, and **Unselect All** controls in the Mod files section.
