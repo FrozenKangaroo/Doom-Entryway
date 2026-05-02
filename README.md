@@ -1,4 +1,4 @@
-# Doom Entryway 1.5.11
+# Doom Entryway 1.5.12
 
 Doom Entryway is a local-first web app for tracking classic DOOM playthroughs. It manages IWADs, PWADs, PK3s, runs, map stats, medals, metadata, titlepics, screenshots, launcher presets, WebDAV sync, and debug logs from a browser-based interface.
 
@@ -70,6 +70,7 @@ http://localhost:8000
 - Refresh the latest `.zds` for a WAD from its configured save folder.
 - Refresh All across configured WADs for saves and screenshots.
 - Read `globals.json` data from saves where available.
+- Mark WADs as Completed after manual final-map edits as well as save imports. Secret-map slots (`MAP31`/`MAP32` for DOOM II/TNT/Plutonia and `E#M9` for DOOM/Ultimate DOOM) are optional for completion.
 - Auto-detect save subfolders from WAD names using fuzzy matching.
 - Track save difficulty from the save skill value.
 - Show only meaningful changes in Refresh All results instead of listing every unchanged file.

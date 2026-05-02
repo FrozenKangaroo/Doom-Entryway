@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.11";
+const APP_VERSION = "1.5.12";
 const DATABASE_API = '/api/database';
 
 const LIBRARY_SORT_OPTIONS = [
@@ -189,13 +189,16 @@ function wireEvents() {
       }
     }
 
+    const latestRun = getLatestRun(wad);
+    const stateChange = latestRun ? applyAutomaticPlayStateFromManualEdit(wad, latestRun) : '';
+
     await saveState();
     editWadDialog?.close();
     if (state.currentWadId === wad.id) {
       pageTitle.textContent = wad.title;
       pageSubtitle.textContent = `${capitalize(wad.type)} overview, run summary, medals, imports, and manual editing.`;
     }
-    showAlert('success', `${wad.title} info updated.${folderSummary}`);
+    showAlert('success', `${wad.title} info updated.${folderSummary}${stateChange ? ` ${stateChange}` : ''}`);
     render();
   });
 
@@ -233,8 +236,10 @@ function wireEvents() {
     }
 
     sortRunMaps(run);
+    const stateChange = applyAutomaticPlayStateFromManualEdit(wad, run);
     saveState();
     mapDialog.close();
+    if (stateChange) showAlert('success', `${payload.levelName} saved. ${stateChange}`);
     render();
   });
 
@@ -246,6 +251,10 @@ function wireEvents() {
     const run = wad.runs.find((r) => r.id === runId);
     if (!run) return;
     run.maps = run.maps.filter((m) => m.id !== mapId);
+    if (String(wad.playState || '') === 'completed' && !isRunCompleteForWad(wad, run)) {
+      wad.playState = 'current';
+      wad.updatedAt = new Date().toISOString();
+    }
     saveState();
     mapDialog.close();
     showAlert('success', 'Map entry deleted. Straight into the lava pit.');
@@ -784,7 +793,7 @@ function renderHome() {
 
 function renderHomeWadMiniCard(wad) {
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   return `<article class="home-wad-mini">
     ${getTitlePicSrc(wad) ? `<button type="button" class="home-mini-thumb-button" onclick="window.appActions.openTitlepic('${escapeJsString(getTitlePicSrc(wad))}', '${escapeJsString(wad.title || 'TITLEPIC')}')"><img src="${getTitlePicSrc(wad)}" alt="${escapeHtml(wad.title)} titlepic"></button>` : `<div class="home-mini-thumb-placeholder">TITLEPIC</div>`}
     <div class="home-mini-body">
@@ -798,7 +807,7 @@ function renderHomeWadMiniCard(wad) {
 
 function renderHomeListRow(wad, metaText) {
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   return `<div class="home-list-row">
     <button class="inline-link-button" onclick="window.appActions.openWad('${escapeJsString(wad.id)}')">${escapeHtml(wad.title || 'Untitled')}</button>
     <span>${escapeHtml(metaText)}</span>
@@ -972,7 +981,7 @@ function renderWadDetail() {
 
   const selectedRun = getLatestRun(wad) || createRun('Default Run');
   if (!wad.runs.length) wad.runs.push(selectedRun);
-  const summary = computeRunSummary(selectedRun, wad.totalMaps);
+  const summary = computeRunSummary(selectedRun, wad.totalMaps, wad);
 
   wadDetailView.innerHTML = `
   <div class="section-stack">
@@ -2128,12 +2137,19 @@ function mergeImportedLevelsIntoRun(run, levels, fileName, saveDifficulty = '') 
 
 function applyAutomaticPlayStateFromRefresh(wad, run, newlyPlayed = 0) {
   if (!wad || !run || !newlyPlayed) return '';
-  const previousState = String(wad.playState || 'plan');
-  const remainingUnplayed = Array.isArray(run.maps)
-    ? run.maps.filter((map) => isUnplayedPlaceholderMap(map)).length
-    : 0;
+  return applyAutomaticPlayStateFromRun(wad, run, { allowCurrentFallback: true });
+}
 
-  if (remainingUnplayed === 0) {
+function applyAutomaticPlayStateFromManualEdit(wad, run) {
+  if (!wad || !run) return '';
+  return applyAutomaticPlayStateFromRun(wad, run, { allowCurrentFallback: false });
+}
+
+function applyAutomaticPlayStateFromRun(wad, run, { allowCurrentFallback = false } = {}) {
+  if (!wad || !run) return '';
+  const previousState = String(wad.playState || 'plan');
+
+  if (isRunCompleteForWad(wad, run)) {
     if (previousState !== 'completed') {
       wad.playState = 'completed';
       wad.updatedAt = new Date().toISOString();
@@ -2142,13 +2158,90 @@ function applyAutomaticPlayStateFromRefresh(wad, run, newlyPlayed = 0) {
     return '';
   }
 
-  if (['plan', 'hold', 'dropped'].includes(previousState)) {
+  if (allowCurrentFallback && ['plan', 'hold', 'dropped'].includes(previousState)) {
     wad.playState = 'current';
     wad.updatedAt = new Date().toISOString();
     return 'State changed to Currently Playing.';
   }
 
   return '';
+}
+
+function isRunCompleteForWad(wad, run) {
+  const maps = Array.isArray(run?.maps) ? run.maps : [];
+  const requiredMaps = maps.filter((map) => !isOptionalCompletionMap(wad, map));
+  const playedRequiredMaps = requiredMaps.filter((map) => !isUnplayedPlaceholderMap(map));
+  if (!playedRequiredMaps.length) return false;
+
+  const unplayedRequiredMaps = requiredMaps.filter((map) => isUnplayedPlaceholderMap(map));
+  if (unplayedRequiredMaps.length > 0) return false;
+
+  const expectedRequiredCount = getExpectedRequiredMapCount(wad, maps);
+  if (expectedRequiredCount > 0 && playedRequiredMaps.length < expectedRequiredCount) return false;
+
+  return true;
+}
+
+function getExpectedRequiredMapCount(wad, maps = []) {
+  const totalMaps = Math.max(0, Number(wad?.totalMaps) || 0);
+  const actualRequiredSlots = Array.isArray(maps)
+    ? maps.filter((map) => !isOptionalCompletionMap(wad, map)).length
+    : 0;
+
+  if (!totalMaps) return actualRequiredSlots;
+
+  const optionalCount = getExpectedOptionalCompletionMapCount(wad, maps, totalMaps);
+  const expectedRequired = Math.max(0, totalMaps - optionalCount);
+  return Math.max(expectedRequired, actualRequiredSlots);
+}
+
+function getExpectedOptionalCompletionMapCount(wad, maps = [], totalMaps = 0) {
+  const family = getCompletionIwadFamily(wad);
+  const levelNames = new Set((Array.isArray(maps) ? maps : []).map((map) => normalizeLevelName(map?.levelName)).filter(Boolean));
+
+  if (family === 'doom2') {
+    const presentSecretSlots = ['MAP31', 'MAP32'].filter((name) => levelNames.has(name)).length;
+    if (presentSecretSlots) return presentSecretSlots;
+    return totalMaps >= 32 ? 2 : 0;
+  }
+
+  if (family === 'doom') {
+    const doomSecretSlots = ['E1M9', 'E2M9', 'E3M9', 'E4M9'];
+    const presentSecretSlots = doomSecretSlots.filter((name) => levelNames.has(name)).length;
+    if (presentSecretSlots) return presentSecretSlots;
+    if (totalMaps >= 36) return 4;
+    if (totalMaps >= 27) return 3;
+    if (totalMaps >= 18) return 2;
+    if (totalMaps >= 9) return 1;
+  }
+
+  return 0;
+}
+
+function isOptionalCompletionMap(wad, map) {
+  const levelName = normalizeLevelName(map?.levelName);
+  const family = getCompletionIwadFamily(wad);
+  if (family === 'doom2') return levelName === 'MAP31' || levelName === 'MAP32';
+  if (family === 'doom') return /^E[1-4]M9$/.test(levelName);
+  return false;
+}
+
+function getCompletionIwadFamily(wad) {
+  const values = [
+    wad?.iwadScanKey,
+    wad?.iwad,
+    wad?.iwadFileName,
+    wad?.iwadPath,
+  ];
+  const text = values.map((value) => normalizeIwadFieldForLaunch(value)).filter(Boolean).join(' ');
+  if (!text) return '';
+  if (text.includes('doom2') || text.includes('doomii') || text.includes('doomtwo') || text.includes('tnt') || text.includes('evilution') || text.includes('plutonia')) return 'doom2';
+  if (text === 'doom' || text.includes('ultimatedoom') || (text.includes('doom') && !text.includes('doom2') && !text.includes('doomii'))) return 'doom';
+  return '';
+}
+
+function normalizeLevelName(value) {
+  return String(value || '').trim().toUpperCase();
 }
 
 
@@ -3193,7 +3286,7 @@ function createRun(name) {
   };
 }
 
-function computeRunSummary(run, totalMaps) {
+function computeRunSummary(run, totalMaps, wad = null) {
   const maps = run.maps || [];
   const playedMaps = maps.filter((map) => !isUnplayedPlaceholderMap(map));
   const killPercents = playedMaps.map((map) => calcPercent(map.killcount, map.totalkills));
@@ -3205,6 +3298,8 @@ function computeRunSummary(run, totalMaps) {
     acc[medal] += 1;
     return acc;
   }, { gold: 0, silver: 0, bronze: 0, none: 0, unplayed: 0 });
+
+  const completionMet = wad ? isRunCompleteForWad(wad, run) : (totalMaps ? playedMaps.length >= totalMaps : false);
 
   return {
     avgKillPercent: average(killPercents),
@@ -3219,9 +3314,9 @@ function computeRunSummary(run, totalMaps) {
     averageKillsPerMinute: totals.averageKillsPerMinute,
     medals,
     completedMaps: playedMaps.length,
-    progressPercent: totalMaps ? Math.min(100, (playedMaps.length / totalMaps) * 100) : 0,
-    statusClass: playedMaps.length === 0 ? 'not-started' : playedMaps.length >= totalMaps ? 'completed' : '',
-    statusLabel: playedMaps.length === 0 ? 'Not Started' : playedMaps.length >= totalMaps ? 'Completed' : 'In Progress',
+    progressPercent: completionMet ? 100 : (totalMaps ? Math.min(100, (playedMaps.length / totalMaps) * 100) : 0),
+    statusClass: playedMaps.length === 0 ? 'not-started' : completionMet ? 'completed' : '',
+    statusLabel: playedMaps.length === 0 ? 'Not Started' : completionMet ? 'Completed' : 'In Progress',
     runCount: 1,
   };
 }
@@ -3571,7 +3666,7 @@ function compareLibrarySortValue(a, b, key) {
 
 function getLibrarySortValue(wad, key) {
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   switch (key) {
     case 'lastPlayed': return getLastPlayedTimestamp(wad);
     case 'dateAdded': return Date.parse(wad?.createdAt || '') || 0;
@@ -3682,7 +3777,7 @@ function renderLibraryWadCard(wad) {
 
 
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   return `
     <article class="wad-card wad-card--library">
       <div class="wad-card-media-row">
@@ -3730,7 +3825,7 @@ function renderLibraryWadCard(wad) {
 
 function renderCompactWadRow(wad) {
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   return `
     <article class="compact-wad-row">
       <div class="compact-wad-mainline">
@@ -3805,7 +3900,7 @@ function showLibraryMapSummary(wadId) {
   const wad = state.app.wads.find((entry) => entry.id === wadId);
   if (!wad) return;
   const latestRun = getLatestRun(wad);
-  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps) : createEmptySummary(wad.totalMaps);
+  const summary = latestRun ? computeRunSummary(latestRun, wad.totalMaps, wad) : createEmptySummary(wad.totalMaps);
   const rows = buildMapSummaryRows(wad, latestRun).map((map) => {
     const hasAnyResult = Boolean(Number(map.totalkills) || Number(map.totalitems) || Number(map.totalsecrets) || Number(map.leveltime) || Number(map.killcount) || Number(map.itemcount) || Number(map.secretcount));
     const isPlayed = hasAnyResult && !isUnplayedPlaceholderMap(map);
